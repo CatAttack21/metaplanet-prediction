@@ -98,7 +98,7 @@ def calculate_daily_dilution(price_data, volume_data):
     dilution['funds_raised'] = 0.0
     
     mask = daily_returns > 0.03
-    dilution.loc[mask, 'dilution_shares'] = volume_data[mask] * 0.15
+    dilution.loc[mask, 'dilution_shares'] = volume_data[mask] * 0.1
     dilution.loc[mask, 'funds_raised'] = dilution['dilution_shares'] * price_data[mask]
     
     return dilution
@@ -350,6 +350,35 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     
     return simulation
 
+def generate_yearly_metrics(simulation):
+    """
+    Generates yearly metrics summary
+    Returns: DataFrame with yearly metrics
+    """
+    # Get all years in the simulation
+    years = sorted(set(simulation.index.year))
+    
+    # Create yearly metrics DataFrame
+    yearly_metrics = pd.DataFrame()
+    
+    for year in years:
+        # Get last available date for each year
+        year_data = simulation[simulation.index.year == year]
+        if not year_data.empty:
+            last_date = year_data.index[-1]
+            yearly_metrics.loc[year, 'BTC Price'] = year_data.loc[last_date, 'btc_price']
+            yearly_metrics.loc[year, 'Stock Price'] = year_data.loc[last_date, 'stock_price']
+            yearly_metrics.loc[year, 'BTC Holdings'] = year_data.loc[last_date, 'btc_holdings']
+            yearly_metrics.loc[year, 'Shares Outstanding'] = year_data.loc[last_date, 'shares_outstanding']
+            yearly_metrics.loc[year, 'mNAV'] = year_data.loc[last_date, 'mnav']
+            yearly_metrics.loc[year, 'Market Cap (USD)'] = year_data.loc[last_date, 'market_cap']
+            yearly_metrics.loc[year, 'BTC per 1000 Shares'] = (
+                year_data.loc[last_date, 'btc_holdings'] / 
+                year_data.loc[last_date, 'shares_outstanding']
+            ) * 1000
+    
+    return yearly_metrics
+
 def plot_simulation_results(simulation):
     """Plot simulation results with aligned axes"""
     # Read historical BTC holdings
@@ -491,6 +520,25 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
     # Save numerical results
     simulation.to_csv('metaplanet_simulation_2030.csv')
     
+    # Generate and save yearly metrics
+    yearly_metrics = generate_yearly_metrics(simulation)
+    yearly_metrics.to_csv('metaplanet_yearly_metrics.csv')
+    
+    # Create formatted text output
+    with open('metaplanet_yearly_summary.txt', 'w') as f:
+        f.write("Metaplanet Yearly Key Metrics\n")
+        f.write("============================\n\n")
+        for year in yearly_metrics.index:
+            f.write(f"Year: {year}\n")
+            f.write(f"BTC Price: ${yearly_metrics.loc[year, 'BTC Price']:,.2f}\n")
+            f.write(f"Stock Price: ${yearly_metrics.loc[year, 'Stock Price']:,.2f}\n")
+            f.write(f"BTC Holdings: {yearly_metrics.loc[year, 'BTC Holdings']:,.2f}\n")
+            f.write(f"Shares Outstanding: {yearly_metrics.loc[year, 'Shares Outstanding']:,.0f}\n")
+            f.write(f"mNAV: {yearly_metrics.loc[year, 'mNAV']:,.4f}\n")
+            f.write(f"Market Cap: ${yearly_metrics.loc[year, 'Market Cap (USD)']:,.2f}\n")
+            f.write(f"BTC per 1000 Shares: {yearly_metrics.loc[year, 'BTC per 1000 Shares']:,.4f}\n")
+            f.write("----------------------------\n\n")
+    
     # Print summary statistics
     print("\nSimulation Results for 2030:")
     print(f"Final Bitcoin Price: ${simulation['btc_price'].iloc[-1]:,.2f}")
@@ -525,3 +573,4 @@ if __name__ == "__main__":
     # Example usage: provide your own start_date, initial_shares, and initial_btc
     # simulation_results = run_complete_simulation("2024-04-01", "2030-12-31", 1234567, 100)
     simulation_results = run_complete_simulation()
+

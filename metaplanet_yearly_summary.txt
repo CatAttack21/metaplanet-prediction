@@ -1,0 +1,63 @@
+Metaplanet Yearly Key Metrics
+============================
+
+Year: 2025
+BTC Price: $99,786.21
+Stock Price: $7.60
+BTC Holdings: 13,586.14
+Shares Outstanding: 680,470,958
+mNAV: 3.8533
+Market Cap: $4,897,267,301.72
+BTC per 1000 Shares: 0.0200
+----------------------------
+
+Year: 2026
+BTC Price: $127,519.89
+Stock Price: $20.42
+BTC Holdings: 48,028.74
+Shares Outstanding: 838,694,764
+mNAV: 2.8107
+Market Cap: $22,251,327,012.62
+BTC per 1000 Shares: 0.0573
+----------------------------
+
+Year: 2027
+BTC Price: $182,750.64
+Stock Price: $63.05
+BTC Holdings: 141,398.77
+Shares Outstanding: 1,002,207,575
+mNAV: 2.4722
+Market Cap: $93,638,400,340.59
+BTC per 1000 Shares: 0.1411
+----------------------------
+
+Year: 2028
+BTC Price: $270,016.44
+Stock Price: $210.03
+BTC Holdings: 371,685.71
+Shares Outstanding: 1,174,738,862
+mNAV: 2.3987
+Market Cap: $367,647,816,757.57
+BTC per 1000 Shares: 0.3164
+----------------------------
+
+Year: 2029
+BTC Price: $340,429.22
+Stock Price: $421.95
+BTC Holdings: 896,021.37
+Shares Outstanding: 1,347,557,266
+mNAV: 1.8641
+Market Cap: $1,117,406,311,528.19
+BTC per 1000 Shares: 0.6649
+----------------------------
+
+Year: 2030
+BTC Price: $395,864.33
+Stock Price: $878.32
+BTC Holdings: 2,096,084.93
+Shares Outstanding: 1,547,016,794
+mNAV: 1.6375
+Market Cap: $3,039,633,119,907.48
+BTC per 1000 Shares: 1.3549
+----------------------------
+
