@@ -8,9 +8,9 @@ def btc_power_law_formula(index):
     genesis = pd.Timestamp('2009-01-03')
     days_since_genesis = (index - genesis).days.values.astype(float)
     days_since_genesis[days_since_genesis < 1] = 1
-    price = 10**-17 * (days_since_genesis ** 5.95)
+    price = 10**-17 * (days_since_genesis ** 6.1)
     support = 0.5 * price
-    resistance = 4.0 * price
+    resistance = 8.0 * price
     return support, price, resistance
 
 def weierstrass_function(t, a=0.5, b=3, n_terms=10):
@@ -89,12 +89,12 @@ def predict_bitcoin_prices(start_date, end_date, last_price):
         else:
             # More power law influence but maintain some volatility
             base_price = future_center[i]
-            osc = w[i] * 0.45  # Reduced from 0.55
-            amplitude = 0.35 * base_price  # Reduced from 0.44
+            osc = w[i] * 0.4  # Reduced from 0.55
+            amplitude = 0.3 * base_price  # Reduced from 0.44
             prices[i] = base_price + osc * amplitude
 
         # Ensure no negative prices and limit daily changes
-        max_daily_change = 0.15  # Reduced from 0.22 for smoother transitions
+        max_daily_change = 0.5  # Reduced from 0.22 for smoother transitions
         if i > 0:
             min_price = prices[i-1] * (1 - max_daily_change)
             max_price = prices[i-1] * (1 + max_daily_change)
