@@ -8,9 +8,9 @@ def btc_power_law_formula(index):
     genesis = pd.Timestamp('2009-01-03')
     days_since_genesis = (index - genesis).days.values.astype(float)
     days_since_genesis[days_since_genesis < 1] = 1
-    price = 10**-17 * (days_since_genesis ** 5.8)
+    price = 10**-17 * (days_since_genesis ** 5.95)
     support = 0.5 * price
-    resistance = 2.0 * price
+    resistance = 4.0 * price
     return support, price, resistance
 
 def weierstrass_function(t, a=0.5, b=3, n_terms=10):
@@ -57,10 +57,10 @@ def predict_bitcoin_prices(start_date, end_date, last_price):
     prices[0] = initial_price
 
     # Calculate initial trend using linear regression on last 30 days
-    transition_days = 180  # Doubled transition period
-    if isinstance(last_price, pd.Series) and len(last_price) >= 90:
-        X = np.arange(90).reshape(-1, 1)
-        y = last_price[-90:].values
+    transition_days = 270  # Extended transition period
+    if isinstance(last_price, pd.Series) and len(last_price) >= 180:
+        X = np.arange(180).reshape(-1, 1)
+        y = last_price[-180:].values
         reg = optimize.minimize(
             lambda x: np.sum((y - (x[0] * X.flatten() + x[1]))**2),
             [0, initial_price],
@@ -70,31 +70,31 @@ def predict_bitcoin_prices(start_date, end_date, last_price):
     else:
         initial_trend = 0
 
-    # Smooth transition period (180 days instead of 90)
+    # Smooth transition period (270 days with exponential easing)
     for i in range(1, len(future_df)):
         if i < transition_days:
-            # Calculate base price trend
-            trend_price = initial_price + (initial_trend * i)
+            # Calculate exponential transition
             power_law_price = future_center[i]
+            price_diff = power_law_price - initial_price
             
-            # Calculate price difference to bridge
-            price_diff = power_law_price - trend_price
+            # Use exponential easing function
+            progress = i / transition_days
+            ease_factor = 1 - np.exp(-4 * progress)  # Exponential ease-in
+            base_price = initial_price + price_diff * ease_factor
             
-            # Use Weierstrass to create oscillating bridge between prices
-            blend_factor = 0.5 * (1 - np.cos(np.pi * i / transition_days))
-            weierstrass_component = w[i] * price_diff * blend_factor
-            
-            # Combine trend with Weierstrass oscillations
-            prices[i] = trend_price + weierstrass_component
+            # Add Weierstrass oscillation with reducing amplitude
+            decay_factor = 1 - ease_factor
+            weierstrass_component = w[i] * price_diff * decay_factor * 0.15
+            prices[i] = base_price + weierstrass_component
         else:
-            # More power law influence but slightly more volatility
+            # More power law influence but maintain some volatility
             base_price = future_center[i]
-            osc = w[i] * 0.55  # Increased from 0.5
-            amplitude = 0.44 * base_price  # Increased from 0.4
+            osc = w[i] * 0.45  # Reduced from 0.55
+            amplitude = 0.35 * base_price  # Reduced from 0.44
             prices[i] = base_price + osc * amplitude
 
         # Ensure no negative prices and limit daily changes
-        max_daily_change = 0.22  # Increased from 0.20
+        max_daily_change = 0.15  # Reduced from 0.22 for smoother transitions
         if i > 0:
             min_price = prices[i-1] * (1 - max_daily_change)
             max_price = prices[i-1] * (1 + max_daily_change)
