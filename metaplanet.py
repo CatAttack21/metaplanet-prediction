@@ -293,13 +293,24 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         
         # Calculate volume with decay and mNAV influence
         decay_factor = np.exp(-decay_rate * days_from_start)
-        base_daily_pct = 0.25 * decay_factor  # Decaying from 25% to 3%
         
-        # Combine base volume with mNAV influence
+        # Create base volume that centers around 5% (reduced from 10%)
+        base_daily_pct = 0.05 * decay_factor
+        
+        # Add asymmetric volatility to push volume between 0.5% and 16.5% (reduced from 1-33%)
         mnav_factor = 1 + (current_mnav - 1) if current_mnav > 1 else 1 / current_mnav
-        volatility_factor = 1 + np.random.normal(0, base_vol_volatility)
-        daily_volume = current_shares * base_daily_pct * mnav_factor * max(0.1, volatility_factor)
         
+        # Generate skewed random multiplier (between 0.1 and 3.3 with peak around 1.0)
+        skew = np.random.beta(2, 3)  # Beta distribution for positive skew
+        vol_multiplier = 0.1 + (skew * 1.6)  # Scale reduced by 50%
+        
+        # Apply volatility factors
+        daily_pct = base_daily_pct * mnav_factor * vol_multiplier
+        
+        # Ensure volume stays within bounds (reduced by 50%)
+        daily_pct = np.clip(daily_pct, 0.005, 0.165)
+        daily_volume = current_shares * daily_pct
+
         # Only update stock price and apply dilution on trading days
         if simulation.loc[date, 'is_trading_day']:
             stock_price = (btc_value * current_mnav) / current_shares
@@ -352,7 +363,7 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
 
 def generate_yearly_metrics(simulation):
     """
-    Generates yearly metrics summary
+    Generates yearly metrics summary using 3-month EMA
     Returns: DataFrame with yearly metrics
     """
     # Get all years in the simulation
@@ -362,19 +373,26 @@ def generate_yearly_metrics(simulation):
     yearly_metrics = pd.DataFrame()
     
     for year in years:
-        # Get last available date for each year
+        # Get data for the year
         year_data = simulation[simulation.index.year == year]
         if not year_data.empty:
+            # Calculate 3-month (90-day) EMA for all metrics at year end
+            ema_span = 90
             last_date = year_data.index[-1]
-            yearly_metrics.loc[year, 'BTC Price'] = year_data.loc[last_date, 'btc_price']
-            yearly_metrics.loc[year, 'Stock Price'] = year_data.loc[last_date, 'stock_price']
-            yearly_metrics.loc[year, 'BTC Holdings'] = year_data.loc[last_date, 'btc_holdings']
-            yearly_metrics.loc[year, 'Shares Outstanding'] = year_data.loc[last_date, 'shares_outstanding']
-            yearly_metrics.loc[year, 'mNAV'] = year_data.loc[last_date, 'mnav']
-            yearly_metrics.loc[year, 'Market Cap (USD)'] = year_data.loc[last_date, 'market_cap']
+            
+            # Get last 90 days of data using loc
+            last_90_days_start = last_date - pd.Timedelta(days=90)
+            last_90_days = year_data.loc[last_90_days_start:last_date]
+            
+            yearly_metrics.loc[year, 'BTC Price'] = last_90_days['btc_price'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'Stock Price'] = last_90_days['stock_price'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'BTC Holdings'] = last_90_days['btc_holdings'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'Shares Outstanding'] = last_90_days['shares_outstanding'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'mNAV'] = last_90_days['mnav'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'Market Cap (USD)'] = last_90_days['market_cap'].ewm(span=ema_span).mean().iloc[-1]
             yearly_metrics.loc[year, 'BTC per 1000 Shares'] = (
-                year_data.loc[last_date, 'btc_holdings'] / 
-                year_data.loc[last_date, 'shares_outstanding']
+                yearly_metrics.loc[year, 'BTC Holdings'] / 
+                yearly_metrics.loc[year, 'Shares Outstanding']
             ) * 1000
     
     return yearly_metrics
@@ -413,6 +431,12 @@ def plot_simulation_results(simulation):
     # Create figure with more subplots
     fig = plt.figure(figsize=(15, 16))  # Made figure taller
     gs = GridSpec(4, 2, figure=fig)  # Changed from 3,2 to 4,2
+
+    def format_millions(x, pos):
+        """Format large numbers in millions"""
+        return f'{x/1e6:.1f}M'
+
+    millions_formatter = plt.FuncFormatter(format_millions)
     
     # Price plots with dynamic y-axes
     ax1 = fig.add_subplot(gs[0, 0])
@@ -420,6 +444,8 @@ def plot_simulation_results(simulation):
     ax1.set_ylabel('BTC Price (USD)')
     ax1.set_title('Bitcoin Price')
     ax1.set_ylim(simulation['btc_price'].min() * 0.95, simulation['btc_price'].max() * 1.05)
+    if simulation['btc_price'].max() > 1e6:
+        ax1.yaxis.set_major_formatter(millions_formatter)
     
     ax2 = fig.add_subplot(gs[0, 1])
     ax2.plot(simulation.index, simulation['stock_price'], 'g-', label='Stock Price', linewidth=2)
@@ -430,11 +456,10 @@ def plot_simulation_results(simulation):
     # Holdings plot
     ax3 = fig.add_subplot(gs[1, 0])
     ax3.plot(complete_holdings.index, complete_holdings.values, 'b-', label='BTC Holdings', linewidth=2)
-    ax3.set_ylabel('BTC Holdings')
+    ax3.set_ylabel('BTC Holdings (Millions)')
     ax3.set_title('Bitcoin Holdings')
-
-    # Dynamic y-axis for BTC holdings
     ax3.set_ylim(0, complete_holdings.max() * 1.05)
+    ax3.yaxis.set_major_formatter(millions_formatter)  # Add millions formatter
     
     # Add cumulative revenue-based BTC purchases
     revenue_btc = simulation['revenue_btc_purchased'].cumsum()
@@ -446,6 +471,7 @@ def plot_simulation_results(simulation):
             label='Shares Outstanding', linewidth=2)
     ax4.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
                  simulation['shares_outstanding'].max() * 1.05)
+    ax4.yaxis.set_major_formatter(millions_formatter)
     
     # mNAV with dynamic y-axis
     ax5 = fig.add_subplot(gs[2, 0])
@@ -460,6 +486,8 @@ def plot_simulation_results(simulation):
     ax6.set_ylabel('Shares Issued')
     ax6.set_title('Daily Share Dilution')
     ax6.set_ylim(0, diluted_shares.max() * 1.05)
+    if diluted_shares.max() > 1e6:
+        ax6.yaxis.set_major_formatter(millions_formatter)
     
     # Add Daily Volume plot
     ax7 = fig.add_subplot(gs[3, 0])
@@ -467,7 +495,8 @@ def plot_simulation_results(simulation):
     ax7.set_ylabel('Number of Shares')
     ax7.set_title('Daily Trading Volume')
     ax7.set_ylim(0, simulation['volume'].max() * 1.05)
-    
+    ax7.yaxis.set_major_formatter(millions_formatter)
+
     # Add Bitcoin per 1000 Shares plot
     ax8 = fig.add_subplot(gs[3, 1])
     btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
