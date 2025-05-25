@@ -153,14 +153,32 @@ def is_tse_trading_day(date):
     ]
     return str(date.date()) not in holidays
 
-def calculate_weekly_revenue(market_cap):
+def calculate_preferred_shares_revenue(market_cap):
     """
-    Calculates weekly revenue from secondary income stream
+    Calculates revenue from preferred shares based on 50% of dilution proceeds
+    Returns: Float revenue amount in USD
+    """
+    annual_dilution_rate = 0.30  # 30% annual dilution
+    weekly_dilution_rate = annual_dilution_rate / 52
+    weekly_dilution_amount = market_cap * weekly_dilution_rate
+    preferred_shares_revenue = weekly_dilution_amount * 0.50  # 50% of dilution
+    return preferred_shares_revenue
+
+def calculate_weekly_revenue(market_cap, current_date=None):
+    """
+    Calculates weekly revenue from all income streams
     Returns: Float revenue amount in USD
     """
     annual_rate = 0.005  # 0.5% annually
     weekly_rate = annual_rate / 52  # Convert to weekly rate
-    return market_cap * weekly_rate
+    secondary_revenue = market_cap * weekly_rate
+    
+    # Only include preferred shares revenue after January 2026
+    if current_date and current_date >= pd.Timestamp('2026-01-01'):
+        preferred_revenue = calculate_preferred_shares_revenue(market_cap)
+        return secondary_revenue + preferred_revenue
+    
+    return secondary_revenue
 
 def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings, start_date=None, end_date="2030-12-31"):
     """Simulates Metaplanet metrics through 2030"""
@@ -261,8 +279,8 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         
         # Check if it's time for weekly revenue
         if (date - last_revenue_date).days >= 7:
-            # Calculate and apply weekly revenue
-            weekly_revenue = calculate_weekly_revenue(market_cap)
+            # Calculate and apply weekly revenue with current date
+            weekly_revenue = calculate_weekly_revenue(market_cap, date)
             revenue_btc = weekly_revenue / btc_price
             current_btc += revenue_btc
             last_revenue_date = date
