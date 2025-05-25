@@ -352,7 +352,7 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
 
 def generate_yearly_metrics(simulation):
     """
-    Generates yearly metrics summary
+    Generates yearly metrics summary using 3-month EMA
     Returns: DataFrame with yearly metrics
     """
     # Get all years in the simulation
@@ -362,19 +362,26 @@ def generate_yearly_metrics(simulation):
     yearly_metrics = pd.DataFrame()
     
     for year in years:
-        # Get last available date for each year
+        # Get data for the year
         year_data = simulation[simulation.index.year == year]
         if not year_data.empty:
+            # Calculate 3-month (90-day) EMA for all metrics at year end
+            ema_span = 90
             last_date = year_data.index[-1]
-            yearly_metrics.loc[year, 'BTC Price'] = year_data.loc[last_date, 'btc_price']
-            yearly_metrics.loc[year, 'Stock Price'] = year_data.loc[last_date, 'stock_price']
-            yearly_metrics.loc[year, 'BTC Holdings'] = year_data.loc[last_date, 'btc_holdings']
-            yearly_metrics.loc[year, 'Shares Outstanding'] = year_data.loc[last_date, 'shares_outstanding']
-            yearly_metrics.loc[year, 'mNAV'] = year_data.loc[last_date, 'mnav']
-            yearly_metrics.loc[year, 'Market Cap (USD)'] = year_data.loc[last_date, 'market_cap']
+            
+            # Get last 90 days of data using loc
+            last_90_days_start = last_date - pd.Timedelta(days=90)
+            last_90_days = year_data.loc[last_90_days_start:last_date]
+            
+            yearly_metrics.loc[year, 'BTC Price'] = last_90_days['btc_price'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'Stock Price'] = last_90_days['stock_price'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'BTC Holdings'] = last_90_days['btc_holdings'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'Shares Outstanding'] = last_90_days['shares_outstanding'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'mNAV'] = last_90_days['mnav'].ewm(span=ema_span).mean().iloc[-1]
+            yearly_metrics.loc[year, 'Market Cap (USD)'] = last_90_days['market_cap'].ewm(span=ema_span).mean().iloc[-1]
             yearly_metrics.loc[year, 'BTC per 1000 Shares'] = (
-                year_data.loc[last_date, 'btc_holdings'] / 
-                year_data.loc[last_date, 'shares_outstanding']
+                yearly_metrics.loc[year, 'BTC Holdings'] / 
+                yearly_metrics.loc[year, 'Shares Outstanding']
             ) * 1000
     
     return yearly_metrics
