@@ -94,7 +94,7 @@ def predict_bitcoin_prices(start_date, end_date, last_price):
             prices[i] = base_price + osc * amplitude
 
         # Ensure no negative prices and limit daily changes
-        max_daily_change = 0.15  # Reduced from 0.22 for smoother transitions
+        max_daily_change = 0.25  # Reduced from 0.22 for smoother transitions
         if i > 0:
             min_price = prices[i-1] * (1 - max_daily_change)
             max_price = prices[i-1] * (1 + max_daily_change)
