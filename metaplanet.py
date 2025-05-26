@@ -676,7 +676,7 @@ def plot_simulation_results(simulation):
     
     # Shift preferred shares plots up one position
     ax11 = fig.add_subplot(gs[5, 0])  # Preferred Shares Outstanding (moved from 6,0)
-    ax11.plot(simulation.index, simulation['preferred_shares'], '#DAA520', 
+    ax11.plot(simulation.index, simulation['preferred_shares'], 'purple', 
              label='Preferred Shares', linewidth=2)
     ax11.set_ylabel('Number of Shares')
     ax11.set_title('Preferred Shares Outstanding')
@@ -684,7 +684,7 @@ def plot_simulation_results(simulation):
     
     ax12 = fig.add_subplot(gs[5, 1])  # Cumulative Preferred Dividends (moved from 6,1)
     cumulative_dividends = simulation['quarterly_dividend'].cumsum()
-    ax12.plot(simulation.index, cumulative_dividends, '#DAA520', 
+    ax12.plot(simulation.index, cumulative_dividends, 'purple', 
              label='Cumulative Dividends', linewidth=2)
     ax12.set_ylabel('USD')
     ax12.set_title('Cumulative Preferred Share Dividends')
@@ -700,7 +700,7 @@ def plot_simulation_results(simulation):
     valid_dates = cumulative_dividends > 0
     ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates]
     
-    ax13.plot(simulation.index[valid_dates], ratio, '#DAA520', 
+    ax13.plot(simulation.index[valid_dates], ratio, 'purple', 
              label='Market Cap / Cumulative Dividends', linewidth=2)
     ax13.set_ylabel('Ratio') 
     ax13.set_title('Market Cap to Cumulative Dividends Ratio')
