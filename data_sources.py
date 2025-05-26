@@ -42,3 +42,14 @@ def get_previous_day_btc():
     start_date = "2025-05-23"  # One day before
     data = yf.download(ticker, start=start_date, end=end_date)
     return data['Close'].iloc[-1]
+
+def get_historical_bitcoin_data_for_cagr():
+    """Pulls Bitcoin price data since 2012 for CAGR calculation"""
+    ticker = "BTC-USD"
+    start_date = "2012-01-01"  # Start from 2012 for historical context
+    try:
+        data = yf.download(ticker, start=start_date, end="2025-05-23")  # End before simulation start
+        return data['Close']
+    except Exception as e:
+        print(f"Warning: Could not fetch historical Bitcoin data: {e}")
+        return pd.Series()

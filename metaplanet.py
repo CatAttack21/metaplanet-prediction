@@ -9,10 +9,18 @@ from mnav_prediction import calculate_mnav_with_volatility
 from data_sources import (
     get_metaplanet_3350_data,
     get_bitcoin_historical_data,
-    get_previous_day_btc
+    get_previous_day_btc,
+    get_historical_bitcoin_data_for_cagr  # Add this import
 )
 from pandas.tseries.holiday import AbstractHolidayCalendar, Holiday, nearest_workday
 from pandas.tseries.offsets import CustomBusinessDay
+from volatility_analysis import (
+    calculate_historical_volatility,
+    calculate_implied_volatility,  # Add this import
+    fit_power_law_params,
+    calculate_support_resistance,
+    generate_realistic_noise
+)
 
 def get_bitcoin_holdings():
     """
@@ -131,9 +139,13 @@ def predict_bitcoin_price(historical_data, end_date="2030-12-31"):
     future_prices = predict_bitcoin_prices(
         start_date=start_date,
         end_date=end_date,
-        last_price=last_price
+        last_price=last_price,
+        historical_data=historical_data
     )
-    return future_prices['Price']
+    
+    # Ensure future_prices is a float Series before assignment
+    future_prices = future_prices.astype(float)
+    return future_prices
 
 def is_tse_trading_day(date):
     """Check if date is a Tokyo Stock Exchange trading day"""
@@ -179,6 +191,16 @@ def calculate_weekly_revenue(market_cap, current_date=None):
         return secondary_revenue + preferred_revenue
     
     return secondary_revenue
+
+def calculate_rolling_cagr(prices, window=365):
+    """Calculate rolling 1-year Compound Annual Growth Rate for given price series"""
+    # Calculate compound annual growth rate: (end_value/start_value)^(1/years) - 1
+    # For 1-year window, time period = 1, so formula simplifies to:
+    start_prices = prices.shift(window)
+    rolling_cagr = np.power(prices / start_prices, 1.0/1.0) - 1
+    # Convert to percentage
+    rolling_cagr = rolling_cagr * 100
+    return rolling_cagr
 
 def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings, start_date=None, end_date="2030-12-31"):
     """Simulates Metaplanet metrics through 2030"""
@@ -241,7 +263,8 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         last_known_date = simulation[simulation['btc_price'].notna()].index[-1]
         last_known_price = simulation.loc[last_known_date, 'btc_price']
         future_prices = predict_bitcoin_price(btc_data, end_date)
-        simulation.loc[missing_dates, 'btc_price'] = future_prices
+        # Ensure index alignment and proper dtype
+        simulation.loc[missing_dates, 'btc_price'] = future_prices.reindex(missing_dates).astype(float)
     
     # Fill any remaining gaps
     simulation['btc_price'] = simulation['btc_price'].ffill()
@@ -428,9 +451,9 @@ def plot_simulation_results(simulation):
     # Update simulation's BTC holdings to match complete series
     simulation['btc_holdings'] = complete_holdings[simulation.index]
     
-    # Create figure with more subplots
-    fig = plt.figure(figsize=(15, 16))  # Made figure taller
-    gs = GridSpec(4, 2, figure=fig)  # Changed from 3,2 to 4,2
+    # Create figure with standard subplot grid
+    fig = plt.figure(figsize=(15, 20))  # Adjust height back to original
+    gs = GridSpec(5, 2, figure=fig)  # Back to 5 rows, 2 columns
 
     def format_millions(x, pos):
         """Format large numbers in millions"""
@@ -438,8 +461,8 @@ def plot_simulation_results(simulation):
 
     millions_formatter = plt.FuncFormatter(format_millions)
     
-    # Price plots with dynamic y-axes
-    ax1 = fig.add_subplot(gs[0, 0])
+    # Left Column (Bitcoin metrics)
+    ax1 = fig.add_subplot(gs[0, 0])  # Bitcoin Price
     ax1.plot(simulation.index, simulation['btc_price'], 'b-', label='BTC Price', linewidth=2)
     ax1.set_ylabel('BTC Price (USD)')
     ax1.set_title('Bitcoin Price')
@@ -447,66 +470,86 @@ def plot_simulation_results(simulation):
     if simulation['btc_price'].max() > 1e6:
         ax1.yaxis.set_major_formatter(millions_formatter)
     
-    ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(simulation.index, simulation['stock_price'], 'g-', label='Stock Price', linewidth=2)
-    ax2.set_ylabel('Stock Price (USD)')
-    ax2.set_title('Metaplanet Stock Price')
-    ax2.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
-    
-    # Holdings plot
-    ax3 = fig.add_subplot(gs[1, 0])
+    ax2 = fig.add_subplot(gs[1, 0])  # Bitcoin CAGR
+    historical_btc = get_historical_bitcoin_data_for_cagr()
+    all_prices = pd.Series()
+    if not historical_btc.empty:
+        all_prices = pd.concat([historical_btc, simulation['btc_price']])
+        all_prices = all_prices[~all_prices.index.duplicated(keep='last')]
+        all_prices = all_prices.sort_index()
+    else:
+        all_prices = simulation['btc_price']
+    rolling_cagr = calculate_rolling_cagr(all_prices)
+    ax2.plot(rolling_cagr.index, rolling_cagr, 'b-', label='1-Year CAGR', linewidth=2)
+    ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+    ax2.set_ylabel('CAGR (%)')
+    ax2.set_title('Bitcoin 1-Year Rolling CAGR')
+    ax2.set_ylim(-20, 150)
+    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+
+    ax3 = fig.add_subplot(gs[2, 0])  # Bitcoin Holdings
     ax3.plot(complete_holdings.index, complete_holdings.values, 'b-', label='BTC Holdings', linewidth=2)
     ax3.set_ylabel('BTC Holdings (Millions)')
     ax3.set_title('Bitcoin Holdings')
     ax3.set_ylim(0, complete_holdings.max() * 1.05)
     ax3.yaxis.set_major_formatter(millions_formatter)  # Add millions formatter
     
-    # Add cumulative revenue-based BTC purchases
-    revenue_btc = simulation['revenue_btc_purchased'].cumsum()
-    ax3.plot(simulation.index, revenue_btc, 'g--', label='Revenue BTC', linewidth=1, alpha=0.7)
+    ax4 = fig.add_subplot(gs[3, 0])  # BTC per 1000 shares
+    btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
+    ax4.plot(simulation.index, btc_per_1000, 'r-', label='BTC per 1000 Shares', linewidth=2)
+    ax4.set_ylabel('BTC Amount')
+    ax4.set_title('Bitcoin per 1000 Shares')
+    ax4.set_ylim(btc_per_1000.min() * 0.95, btc_per_1000.max() * 1.05)
     
-    # Shares outstanding with dynamic y-axis
-    ax4 = fig.add_subplot(gs[1, 1])
-    ax4.plot(simulation.index, simulation['shares_outstanding'], 'g-', 
+    ax5 = fig.add_subplot(gs[4, 0])  # Daily Volume
+    ax5.plot(simulation.index, simulation['volume'], 'b-', label='Daily Volume', linewidth=2)
+    ax5.set_ylabel('Number of Shares')
+    ax5.set_title('Daily Trading Volume')
+    ax5.set_ylim(0, simulation['volume'].max() * 1.05)
+    ax5.yaxis.set_major_formatter(millions_formatter)
+
+    # Right Column (Stock metrics)
+    ax6 = fig.add_subplot(gs[0, 1])  # Stock Price
+    ax6.plot(simulation.index, simulation['stock_price'], 'g-', label='Stock Price', linewidth=2)
+    ax6.set_ylabel('Stock Price (USD)')
+    ax6.set_title('Metaplanet Stock Price')
+    ax6.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
+    
+    ax7 = fig.add_subplot(gs[1, 1])  # mNAV
+    ax7.plot(simulation.index, simulation['mnav'], 'r-', label='mNAV', linewidth=2)
+    ax7.set_ylabel('mNAV')
+    ax7.set_title('mNAV')
+    ax7.set_ylim(simulation['mnav'].min() * 0.95, simulation['mnav'].max() * 1.05)
+    
+    ax8 = fig.add_subplot(gs[2, 1])  # Implied Volatility
+    implied_vol = calculate_implied_volatility(simulation['stock_price'])
+    ax8.plot(simulation.index, implied_vol, 'r-', label='30-Day Implied Vol', linewidth=2)
+    ax8.set_ylabel('Volatility (%)')
+    ax8.set_title('Stock Implied Volatility')
+    ax8.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax8.set_ylim(75, 300)
+
+    ax9 = fig.add_subplot(gs[3, 1])  # Shares Outstanding
+    ax9.plot(simulation.index, simulation['shares_outstanding'], 'g-', 
             label='Shares Outstanding', linewidth=2)
-    ax4.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
+    ax9.set_ylabel('Shares Outstanding (Millions)')
+    ax9.set_title('Shares Outstanding')
+    ax9.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
                  simulation['shares_outstanding'].max() * 1.05)
-    ax4.yaxis.set_major_formatter(millions_formatter)
+    ax9.yaxis.set_major_formatter(millions_formatter)
     
-    # mNAV with dynamic y-axis
-    ax5 = fig.add_subplot(gs[2, 0])
-    ax5.plot(simulation.index, simulation['mnav'], 'r-', label='mNAV', linewidth=2)
-    ax5.set_ylim(simulation['mnav'].min() * 0.95, simulation['mnav'].max() * 1.05)
-    
-    # Replace volume plot with dilution plot
-    ax6 = fig.add_subplot(gs[2, 1])
+    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution
     diluted_shares = simulation['shares_outstanding'].diff()
     diluted_shares.iloc[0] = 0  # Set first day's dilution to 0 using iloc
-    ax6.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution', linewidth=2)
-    ax6.set_ylabel('Shares Issued')
-    ax6.set_title('Daily Share Dilution')
-    ax6.set_ylim(0, diluted_shares.max() * 1.05)
+    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution', linewidth=2)
+    ax10.set_ylabel('Shares Issued')
+    ax10.set_title('Daily Share Dilution')
+    ax10.set_ylim(0, diluted_shares.max() * 1.05)
     if diluted_shares.max() > 1e6:
-        ax6.yaxis.set_major_formatter(millions_formatter)
-    
-    # Add Daily Volume plot
-    ax7 = fig.add_subplot(gs[3, 0])
-    ax7.plot(simulation.index, simulation['volume'], 'b-', label='Daily Volume', linewidth=2)
-    ax7.set_ylabel('Number of Shares')
-    ax7.set_title('Daily Trading Volume')
-    ax7.set_ylim(0, simulation['volume'].max() * 1.05)
-    ax7.yaxis.set_major_formatter(millions_formatter)
-
-    # Add Bitcoin per 1000 Shares plot
-    ax8 = fig.add_subplot(gs[3, 1])
-    btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
-    ax8.plot(simulation.index, btc_per_1000, 'r-', label='BTC per 1000 Shares', linewidth=2)
-    ax8.set_ylabel('BTC Amount')
-    ax8.set_title('Bitcoin per 1000 Shares')
-    ax8.set_ylim(btc_per_1000.min() * 0.95, btc_per_1000.max() * 1.05)
+        ax10.yaxis.set_major_formatter(millions_formatter)
     
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
+    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10]:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
@@ -602,4 +645,3 @@ if __name__ == "__main__":
     # Example usage: provide your own start_date, initial_shares, and initial_btc
     # simulation_results = run_complete_simulation("2024-04-01", "2030-12-31", 1234567, 100)
     simulation_results = run_complete_simulation()
-

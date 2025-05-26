@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from datetime import datetime
 
 def weierstrass_function(t, a=0.5, b=3, n_terms=10):
@@ -46,28 +47,28 @@ def calculate_mnav_with_volatility(btc_value, days_from_start, base_volatility=0
     if np.random.random() < 0.15:  # 15% chance of setting new overshoot target
         # Generate asymmetric overshoots
         if np.random.random() < 0.5:  # Upside overshoot
-            overshoot = np.random.uniform(1.33, 4.0)  # 33% to 100% upside (increased from 20%)
+            overshoot = np.random.uniform(1.33, 4.0)
         else:  # Downside overshoot
-            overshoot = np.random.uniform(0.5, 0.8)  # 20% to 50% downside (unchanged)
+            overshoot = np.random.uniform(0.5, 0.8)
         target_mnav = power_law_mnav * overshoot
     else:
         target_mnav = power_law_mnav
 
-    # Calculate current mNAV with enhanced volatility
-    volatility = base_volatility * (1 + 0.5 * np.sin(days_from_start / 30))  # Cyclical volatility
+    # Calculate volatility and noise
+    volatility = base_volatility * (1 + 0.5 * np.sin(days_from_start / 30))
     noise = np.random.normal(0, volatility)
-    
-    # Mean reversion strength varies randomly
-    reversion_speed = np.random.uniform(0.05, 0.15)
     
     # Get previous mNAV (or use power law if first calculation)
     current_mnav = getattr(calculate_mnav_with_volatility, 'last_mnav', power_law_mnav)
     
-    # Apply mean reversion with noise
+    # Mean reversion strength varies randomly
+    reversion_speed = np.random.uniform(0.05, 0.15)
+    
+    # Calculate new mNAV with mean reversion and noise
     new_mnav = current_mnav + (target_mnav - current_mnav) * reversion_speed + noise
     
-    # Ensure minimum mNAV floor
-    min_mnav = power_law_mnav * 0.4  # Allow deeper downside
+    # Apply minimum mNAV floor
+    min_mnav = power_law_mnav * 0.4
     new_mnav = max(min_mnav, new_mnav)
     
     # Store for next calculation

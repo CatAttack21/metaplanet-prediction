@@ -1,7 +1,12 @@
-import pandas as pd
 import numpy as np
-from datetime import datetime
-from scipy import optimize
+import pandas as pd
+from datetime import datetime, timedelta
+from volatility_analysis import (
+    calculate_historical_volatility,
+    fit_power_law_params,
+    calculate_support_resistance,
+    generate_realistic_noise
+)
 
 def btc_power_law_formula(index):
     """Bitcoin Power Law model"""
@@ -13,117 +18,65 @@ def btc_power_law_formula(index):
     resistance = 4.0 * price
     return support, price, resistance
 
-def weierstrass_function(t, a=0.5, b=3, n_terms=10):
-    """Generate Weierstrass-like function"""
-    w = np.zeros_like(t, dtype=float)
-    for n in range(n_terms):
-        w += a**n * np.cos(np.pi * b**n * t)
-    w = w / np.max(np.abs(w))
-    return w
+def predict_bitcoin_prices(start_date, end_date, last_price, historical_data=None):
+    """
+    Predict Bitcoin prices using power law as baseline with oscillating swings
+    """
+    # Generate date range
+    dates = pd.date_range(start=start_date, end=end_date, freq='D')
+    
+    # Initialize predictions DataFrame
+    predictions = pd.DataFrame(index=dates)
+    predictions['Price'] = 0.0
+    
+    # Get power law model values
+    support, baseline, resistance = btc_power_law_formula(dates)
+    
+    # Scale to match last known price
+    initial_price = float(last_price.iloc[0] if isinstance(last_price, pd.Series) else last_price)
+    scale_factor = initial_price / baseline[0]
+    
+    # Scale all curves
+    baseline = baseline * scale_factor
+    support = support * scale_factor
+    resistance = resistance * scale_factor
+    
+    # Set initial price
+    predictions.at[dates[0], 'Price'] = initial_price
+    
+    # Generate combined oscillation pattern
+    time_index = np.arange(len(dates))
+    combined_oscillation = np.zeros(len(dates))
+    
+    # Multiple frequency components
+    periods = [1, 5, 10, 30, 90, 180, 360, 1460]  # Short, medium, and long cycles
+    amplitudes = [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.09, 0.1]  # Increasing impact for longer cycles
+    
+    for period, amplitude in zip(periods, amplitudes):
+        cycle = 2 * np.pi * time_index / period
+        combined_oscillation += amplitude * np.sin(cycle)
+    
+    # Add noise component
+    noise = generate_realistic_noise(len(dates), 0.1)  # Reduced volatility
+    
+    # Calculate prices respecting support/resistance
+    for i in range(1, len(dates)):
+        # Calculate oscillation factor
+        oscillation = 1.0 + combined_oscillation[i] + noise[i]
+        
+        # Calculate price from baseline and oscillation
+        new_price = baseline[i] * oscillation
+        
+        # Ensure price stays within support/resistance
+        new_price = np.clip(new_price, support[i], resistance[i])
+        
+        # Limit daily moves to maintain realism
+        prev_price = predictions.at[dates[i-1], 'Price']
+        max_daily_change = 0.15  # 15% maximum daily change
+        max_up = prev_price * (1 + max_daily_change)
+        max_down = prev_price * (1 - max_daily_change)
+        new_price = np.clip(new_price, max_down, max_up)
+        
+        predictions.at[dates[i], 'Price'] = new_price
 
-def multi_weierstrass(t, configs):
-    """Overlay multiple Weierstrass functions with time-based amplitude"""
-    wsum = np.zeros_like(t, dtype=float)
-    for cfg in configs:
-        w = weierstrass_function(
-            t * cfg.get('scale', 1.0),
-            a=cfg.get('a', 0.5),
-            b=cfg.get('b', 3),
-            n_terms=cfg.get('n_terms', 10)
-        )
-        wsum += cfg.get('weight', 1.0) * w
-    
-    wsum = wsum / np.max(np.abs(wsum))
-    # Apply time-based amplitude scaling
-    wsum *= get_time_based_amplitude(t)
-    return wsum
-
-def get_time_based_amplitude(t):
-    """Calculate time-based amplitude scaling that transitions from 50% to 20%"""
-    start_date = np.datetime64('2025-01-01')
-    end_date = np.datetime64('2030-01-01')
-    start_amp = 0.5  # 50% swing
-    end_amp = 0.2    # 20% swing
-    
-    # Convert numeric days to datetime
-    dates = pd.to_datetime('2009-01-03') + pd.to_timedelta(t, unit='D')
-    scaling = np.ones_like(t, dtype=float) * end_amp
-    
-    mask = dates < end_date
-    time_fraction = (dates[mask] - start_date) / (end_date - start_date)
-    time_fraction = np.clip(time_fraction, 0, 1)
-    scaling[mask] = start_amp - (start_amp - end_amp) * time_fraction
-    scaling[dates < start_date] = start_amp
-    
-    return scaling
-
-def predict_bitcoin_prices(start_date, end_date, last_price):
-    """Predict Bitcoin prices using combined power law and Weierstrass models with smooth transition"""
-    future_dates = pd.date_range(start=start_date, end=end_date, freq='D')
-    future_df = pd.DataFrame(index=future_dates)
-    
-    _, future_center, _ = btc_power_law_formula(future_dates)
-    
-    t = np.arange(len(future_df))
-    configs = [
-        {'a': 0.5, 'b': 10, 'n_terms': 10, 'weight': 3.0, 'scale': 1/1460},
-        {'a': 0.2, 'b': 10, 'n_terms': 10, 'weight': 1.0, 'scale': 1/365},
-        {'a': 0.3, 'b': 5, 'n_terms': 20, 'weight': 2.0, 'scale': 1/1800},
-        {'a': 0.3, 'b': 5, 'n_terms': 20, 'weight': 1.5, 'scale': 1/90},
-        {'a': 0.5, 'b': 3, 'n_terms': 30, 'weight': 1.0, 'scale': 1/30}
-    ]
-    w = multi_weierstrass(t, configs)
-    
-    # Initialize price array
-    prices = np.zeros(len(future_df))
-    initial_price = float(last_price.iloc[0]) if isinstance(last_price, pd.Series) else float(last_price)
-    prices[0] = initial_price
-
-    # Calculate initial trend using linear regression on last 30 days
-    transition_days = 60  # Extended transition period
-    if isinstance(last_price, pd.Series) and len(last_price) >= 60:
-        X = np.arange(60).reshape(-1, 1)
-        y = last_price[-60:].values
-        reg = optimize.minimize(
-            lambda x: np.sum((y - (x[0] * X.flatten() + x[1]))**2),
-            [0, initial_price],
-            method='Nelder-Mead'
-        ).x
-        initial_trend = reg[0]  # Daily price change
-    else:
-        initial_trend = 0
-
-    # Smooth transition period (270 days with exponential easing)
-    for i in range(1, len(future_df)):
-        if i < transition_days:
-            # Calculate exponential transition
-            power_law_price = future_center[i]
-            price_diff = power_law_price - initial_price
-            
-            # Use exponential easing function
-            progress = i / transition_days
-            ease_factor = 1 - np.exp(-4 * progress)  # Exponential ease-in
-            base_price = initial_price + price_diff * ease_factor
-            
-            # Add Weierstrass oscillation with reducing amplitude
-            decay_factor = 1 - ease_factor
-            weierstrass_component = w[i] * price_diff * decay_factor * 0.15
-            prices[i] = base_price + weierstrass_component
-        else:
-            # More power law influence but maintain some volatility
-            base_price = future_center[i]
-            osc = w[i] * 0.5  # Reduced from 0.55
-            amplitude = 1.0 * base_price  # Reduced from 0.44
-            prices[i] = base_price + osc * amplitude
-
-        # Ensure no negative prices and limit daily changes
-        max_daily_change = 0.25  # Reduced from 0.22 for smoother transitions
-        if i > 0:
-            min_price = prices[i-1] * (1 - max_daily_change)
-            max_price = prices[i-1] * (1 + max_daily_change)
-            prices[i] = np.clip(prices[i], min_price, max_price)
-    
-    future_df['Price'] = prices
-    future_df['CAGR'] = (future_df['Price'] / future_df['Price'].shift(365)) ** (1 / 1) - 1
-    
-    return future_df
+    return predictions['Price']
