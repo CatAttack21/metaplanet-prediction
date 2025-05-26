@@ -461,8 +461,8 @@ def plot_simulation_results(simulation):
 
     millions_formatter = plt.FuncFormatter(format_millions)
     
-    # Price plots with dynamic y-axes
-    ax1 = fig.add_subplot(gs[0, 0])
+    # Left Column (Bitcoin metrics)
+    ax1 = fig.add_subplot(gs[0, 0])  # Bitcoin Price
     ax1.plot(simulation.index, simulation['btc_price'], 'b-', label='BTC Price', linewidth=2)
     ax1.set_ylabel('BTC Price (USD)')
     ax1.set_title('Bitcoin Price')
@@ -470,68 +470,8 @@ def plot_simulation_results(simulation):
     if simulation['btc_price'].max() > 1e6:
         ax1.yaxis.set_major_formatter(millions_formatter)
     
-    ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(simulation.index, simulation['stock_price'], 'g-', label='Stock Price', linewidth=2)
-    ax2.set_ylabel('Stock Price (USD)')
-    ax2.set_title('Metaplanet Stock Price')
-    ax2.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
-    
-    # Holdings plot
-    ax3 = fig.add_subplot(gs[1, 0])
-    ax3.plot(complete_holdings.index, complete_holdings.values, 'b-', label='BTC Holdings', linewidth=2)
-    ax3.set_ylabel('BTC Holdings (Millions)')
-    ax3.set_title('Bitcoin Holdings')
-    ax3.set_ylim(0, complete_holdings.max() * 1.05)
-    ax3.yaxis.set_major_formatter(millions_formatter)  # Add millions formatter
-    
-    # Add cumulative revenue-based BTC purchases
-    revenue_btc = simulation['revenue_btc_purchased'].cumsum()
-    ax3.plot(simulation.index, revenue_btc, 'g--', label='Revenue BTC', linewidth=1, alpha=0.7)
-    
-    # Shares outstanding with dynamic y-axis
-    ax4 = fig.add_subplot(gs[1, 1])
-    ax4.plot(simulation.index, simulation['shares_outstanding'], 'g-', 
-            label='Shares Outstanding', linewidth=2)
-    ax4.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
-                 simulation['shares_outstanding'].max() * 1.05)
-    ax4.yaxis.set_major_formatter(millions_formatter)
-    
-    # mNAV with dynamic y-axis
-    ax5 = fig.add_subplot(gs[2, 0])
-    ax5.plot(simulation.index, simulation['mnav'], 'r-', label='mNAV', linewidth=2)
-    ax5.set_ylim(simulation['mnav'].min() * 0.95, simulation['mnav'].max() * 1.05)
-    
-    # Replace volume plot with dilution plot
-    ax6 = fig.add_subplot(gs[2, 1])
-    diluted_shares = simulation['shares_outstanding'].diff()
-    diluted_shares.iloc[0] = 0  # Set first day's dilution to 0 using iloc
-    ax6.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution', linewidth=2)
-    ax6.set_ylabel('Shares Issued')
-    ax6.set_title('Daily Share Dilution')
-    ax6.set_ylim(0, diluted_shares.max() * 1.05)
-    if diluted_shares.max() > 1e6:
-        ax6.yaxis.set_major_formatter(millions_formatter)
-    
-    # Add Daily Volume plot
-    ax7 = fig.add_subplot(gs[3, 0])
-    ax7.plot(simulation.index, simulation['volume'], 'b-', label='Daily Volume', linewidth=2)
-    ax7.set_ylabel('Number of Shares')
-    ax7.set_title('Daily Trading Volume')
-    ax7.set_ylim(0, simulation['volume'].max() * 1.05)
-    ax7.yaxis.set_major_formatter(millions_formatter)
-
-    # Add Bitcoin per 1000 Shares plot
-    ax8 = fig.add_subplot(gs[3, 1])
-    btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
-    ax8.plot(simulation.index, btc_per_1000, 'r-', label='BTC per 1000 Shares', linewidth=2)
-    ax8.set_ylabel('BTC Amount')
-    ax8.set_title('Bitcoin per 1000 Shares')
-    ax8.set_ylim(btc_per_1000.min() * 0.95, btc_per_1000.max() * 1.05)
-    
-    # Get historical Bitcoin data for CAGR calculation
+    ax2 = fig.add_subplot(gs[1, 0])  # Bitcoin CAGR
     historical_btc = get_historical_bitcoin_data_for_cagr()
-    
-    # Combine historical and simulated prices for CAGR
     all_prices = pd.Series()
     if not historical_btc.empty:
         all_prices = pd.concat([historical_btc, simulation['btc_price']])
@@ -539,27 +479,74 @@ def plot_simulation_results(simulation):
         all_prices = all_prices.sort_index()
     else:
         all_prices = simulation['btc_price']
-    
-    # Calculate rolling CAGR
     rolling_cagr = calculate_rolling_cagr(all_prices)
+    ax2.plot(rolling_cagr.index, rolling_cagr, 'b-', label='1-Year CAGR', linewidth=2)
+    ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+    ax2.set_ylabel('CAGR (%)')
+    ax2.set_title('Bitcoin 1-Year Rolling CAGR')
+    ax2.set_ylim(-20, 150)
+    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+
+    ax3 = fig.add_subplot(gs[2, 0])  # Bitcoin Holdings
+    ax3.plot(complete_holdings.index, complete_holdings.values, 'b-', label='BTC Holdings', linewidth=2)
+    ax3.set_ylabel('BTC Holdings (Millions)')
+    ax3.set_title('Bitcoin Holdings')
+    ax3.set_ylim(0, complete_holdings.max() * 1.05)
+    ax3.yaxis.set_major_formatter(millions_formatter)  # Add millions formatter
     
-    # Add CAGR plot in standard subplot position
-    ax9 = fig.add_subplot(gs[4, 0])  # Place in bottom row, left column
-    ax9.plot(rolling_cagr.index, rolling_cagr, 'b-', label='1-Year CAGR', linewidth=2)
-    ax9.axhline(y=0, color='r', linestyle='--', alpha=0.5)
-    ax9.set_ylabel('CAGR (%)')
-    ax9.set_title('Bitcoin 1-Year Rolling CAGR')
-    ax9.set_ylim(-20, 150)  # Changed upper limit from 120 to 150
-    ax9.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax4 = fig.add_subplot(gs[3, 0])  # BTC per 1000 shares
+    btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
+    ax4.plot(simulation.index, btc_per_1000, 'r-', label='BTC per 1000 Shares', linewidth=2)
+    ax4.set_ylabel('BTC Amount')
+    ax4.set_title('Bitcoin per 1000 Shares')
+    ax4.set_ylim(btc_per_1000.min() * 0.95, btc_per_1000.max() * 1.05)
     
-    # Add Implied Volatility plot in standard subplot position
-    ax10 = fig.add_subplot(gs[4, 1])  # Place in bottom row, right column
+    ax5 = fig.add_subplot(gs[4, 0])  # Daily Volume
+    ax5.plot(simulation.index, simulation['volume'], 'b-', label='Daily Volume', linewidth=2)
+    ax5.set_ylabel('Number of Shares')
+    ax5.set_title('Daily Trading Volume')
+    ax5.set_ylim(0, simulation['volume'].max() * 1.05)
+    ax5.yaxis.set_major_formatter(millions_formatter)
+
+    # Right Column (Stock metrics)
+    ax6 = fig.add_subplot(gs[0, 1])  # Stock Price
+    ax6.plot(simulation.index, simulation['stock_price'], 'g-', label='Stock Price', linewidth=2)
+    ax6.set_ylabel('Stock Price (USD)')
+    ax6.set_title('Metaplanet Stock Price')
+    ax6.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
+    
+    ax7 = fig.add_subplot(gs[1, 1])  # mNAV
+    ax7.plot(simulation.index, simulation['mnav'], 'r-', label='mNAV', linewidth=2)
+    ax7.set_ylabel('mNAV')
+    ax7.set_title('mNAV')
+    ax7.set_ylim(simulation['mnav'].min() * 0.95, simulation['mnav'].max() * 1.05)
+    
+    ax8 = fig.add_subplot(gs[2, 1])  # Implied Volatility
     implied_vol = calculate_implied_volatility(simulation['stock_price'])
-    ax10.plot(simulation.index, implied_vol, 'r-', label='30-Day Implied Vol', linewidth=2)
-    ax10.set_ylabel('Volatility (%)')
-    ax10.set_title('Stock Implied Volatility')
-    ax10.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
-    ax10.set_ylim(75, 350)  # Set y-axis limits between 75% and 300%
+    ax8.plot(simulation.index, implied_vol, 'r-', label='30-Day Implied Vol', linewidth=2)
+    ax8.set_ylabel('Volatility (%)')
+    ax8.set_title('Stock Implied Volatility')
+    ax8.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax8.set_ylim(75, 300)
+
+    ax9 = fig.add_subplot(gs[3, 1])  # Shares Outstanding
+    ax9.plot(simulation.index, simulation['shares_outstanding'], 'g-', 
+            label='Shares Outstanding', linewidth=2)
+    ax9.set_ylabel('Shares Outstanding (Millions)')
+    ax9.set_title('Shares Outstanding')
+    ax9.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
+                 simulation['shares_outstanding'].max() * 1.05)
+    ax9.yaxis.set_major_formatter(millions_formatter)
+    
+    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution
+    diluted_shares = simulation['shares_outstanding'].diff()
+    diluted_shares.iloc[0] = 0  # Set first day's dilution to 0 using iloc
+    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution', linewidth=2)
+    ax10.set_ylabel('Shares Issued')
+    ax10.set_title('Daily Share Dilution')
+    ax10.set_ylim(0, diluted_shares.max() * 1.05)
+    if diluted_shares.max() > 1e6:
+        ax10.yaxis.set_major_formatter(millions_formatter)
     
     # Common settings for all plots
     for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10]:
