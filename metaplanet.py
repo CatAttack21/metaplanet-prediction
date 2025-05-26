@@ -106,7 +106,7 @@ def calculate_daily_dilution(price_data, volume_data):
     dilution['funds_raised'] = 0.0
     
     mask = daily_returns > 0.03
-    dilution.loc[mask, 'dilution_shares'] = volume_data[mask] * 0.1
+    dilution.loc[mask, 'dilution_shares'] = volume_data[mask] * 0.05
     dilution.loc[mask, 'funds_raised'] = dilution['dilution_shares'] * price_data[mask]
     
     return dilution
@@ -339,16 +339,22 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     initial_mnav = theoretical_mcap / initial_btc_nav
     prev_mnav = initial_mnav
     
-    # Initialize volume decay parameters
-    total_days = (sim_end - sim_start).days
-    end_volume_target = 0.01  # 3% of shares as final target
-    decay_rate = -np.log(end_volume_target / 0.05) / total_days  # Decay from 25% to 3%
+    # Get historical trading volume data
+    if not meta_3350_data.empty and 'Volume' in meta_3350_data.columns:
+        # Calculate initial volume as percentage of shares
+        initial_volume_pct = meta_3350_data['Volume'].iloc[0] / initial_shares
+        initial_volume_pct = min(0.33, max(0.05, initial_volume_pct))  # Bound between 5-33%
+    else:
+        initial_volume_pct = 0.20  # Default to 20% initial volume
     
-    # Get historical volume trend components
-    base_vol_volatility = meta_3350_data['Volume'].std() / meta_3350_data['Volume'].mean()
-    base_volume = meta_3350_data['Volume_Trend'].iloc[-1]
-    volume_growth = meta_3350_data['Volume_Growth'].iloc[-1]
-    
+    # Configure exponential decay parameters
+    decay_rate = -np.log(0.1) / total_days  # Decay to achieve 10% asymptote
+    base_volatility = 0.5  # 50% base volatility
+
+    # Add volume cycle counter for weekly pattern
+    days_in_week = 0
+    weekly_volume_factor = 1.0
+
     # Add dilution cycle counter
     days_since_dilution = 0
     
@@ -383,25 +389,29 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         # Calculate mNAV using imported function
         current_mnav = calculate_mnav_with_volatility(btc_value, days_from_start)
         
-        # Calculate volume with decay and mNAV influence
-        decay_factor = np.exp(-decay_rate * days_from_start)
+        # Calculate base exponential decay volume
+        days_elapsed = (date - sim_start).days
+        decay_factor = np.exp(-decay_rate * days_elapsed)
         
-        # Create base volume that centers around 5% (reduced from 10%)
-        base_daily_pct = 0.05 * decay_factor
+        # Calculate volume percentage that decays from initial to 10% asymptote
+        volume_pct = 0.10 + (initial_volume_pct - 0.10) * decay_factor
         
-        # Add asymmetric volatility to push volume between 0.5% and 16.5% (reduced from 1-33%)
-        mnav_factor = 1 + (current_mnav - 1) if current_mnav > 1 else 1 / current_mnav
+        # Add weekly cycle pattern
+        days_in_week = (days_in_week + 1) % 5
+        if days_in_week == 0:  # Reset weekly factor
+            weekly_volume_factor = np.random.normal(1.0, 0.2)
         
-        # Generate skewed random multiplier (between 0.1 and 3.3 with peak around 1.0)
-        skew = np.random.beta(2, 3)  # Beta distribution for positive skew
-        vol_multiplier = 0.1 + (skew * 1.6)  # Scale reduced by 50%
+        # Apply mNAV influence and weekly pattern
+        mnav_factor = 1.0 + 0.5 * (current_mnav - 1.0) if current_mnav > 1 else 1.0 / (1.0 + 0.5 * (1.0 - current_mnav))
+        final_volume_pct = volume_pct * mnav_factor * weekly_volume_factor
         
-        # Apply volatility factors
-        daily_pct = base_daily_pct * mnav_factor * vol_multiplier
+        # Add random noise with increasing volatility at lower volumes
+        vol_noise = np.random.normal(1.0, base_volatility * (1.0 + (0.10 / volume_pct)))
+        final_volume_pct *= max(0.1, min(3.0, vol_noise))
         
-        # Ensure volume stays within bounds (reduced by 50%)
-        daily_pct = np.clip(daily_pct, 0.005, 0.165)
-        daily_volume = current_shares * daily_pct
+        # Ensure volume stays within bounds
+        final_volume_pct = min(0.33, max(0.01, final_volume_pct))
+        daily_volume = current_shares * final_volume_pct
 
         # Only update stock price and apply dilution on trading days
         if simulation.loc[date, 'is_trading_day']:
