@@ -509,6 +509,13 @@ def generate_yearly_metrics(simulation):
                 yearly_metrics.loc[year, 'BTC Holdings'] / 
                 yearly_metrics.loc[year, 'Shares Outstanding']
             ) * 1000
+            
+            # Calculate cumulative dividends for the year
+            year_dividends = year_data['quarterly_dividend'].sum()
+            if year_dividends > 0:  # Only calculate ratio if dividends were paid
+                yearly_metrics.loc[year, 'Market Cap to Dividends Ratio'] = (
+                    yearly_metrics.loc[year, 'Market Cap (USD)'] / year_dividends
+                )
     
     return yearly_metrics
 
@@ -544,8 +551,8 @@ def plot_simulation_results(simulation):
     simulation['btc_holdings'] = complete_holdings[simulation.index]
     
     # Create figure with standard subplot grid
-    fig = plt.figure(figsize=(15, 24))  # Increased height for new plots
-    gs = GridSpec(6, 2, figure=fig)  # 6 rows, 2 columns
+    fig = plt.figure(figsize=(15, 32))  # Increased height for new dilution plot
+    gs = GridSpec(8, 2, figure=fig)  # 8 rows now instead of 7
 
     def format_millions(x, pos):
         """Format large numbers in millions"""
@@ -630,25 +637,36 @@ def plot_simulation_results(simulation):
                  simulation['shares_outstanding'].max() * 1.05)
     ax9.yaxis.set_major_formatter(millions_formatter)
     
-    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution
+    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution Model #1
     diluted_shares = simulation['shares_outstanding'].diff()
     diluted_shares.iloc[0] = 0  # Set first day's dilution to 0 using iloc
-    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution', linewidth=2)
+    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution (Model #1)', linewidth=2)
     ax10.set_ylabel('Shares Issued')
-    ax10.set_title('Daily Share Dilution')
+    ax10.set_title('Daily Share Dilution Model #1')
     ax10.set_ylim(0, diluted_shares.max() * 1.05)
     if diluted_shares.max() > 1e6:
         ax10.yaxis.set_major_formatter(millions_formatter)
+
+    # Add Model #2 dilution plot
+    ax10b = fig.add_subplot(gs[5, 1])  # Daily Share Dilution Model #2
+    model2_dilution = calculate_daily_dilution(simulation['stock_price'], simulation['volume'])
+    ax10b.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
+              label='Daily Share Dilution (Model #2)', linewidth=2)
+    ax10b.set_ylabel('Shares Issued')
+    ax10b.set_title('Daily Share Dilution Model #2')
+    ax10b.set_ylim(0, model2_dilution['dilution_shares'].max() * 1.05)
+    if model2_dilution['dilution_shares'].max() > 1e6:
+        ax10b.yaxis.set_major_formatter(millions_formatter)
     
-    # Add new plots for preferred shares
-    ax11 = fig.add_subplot(gs[5, 0])  # Preferred Shares Outstanding
+    # Shift the preferred shares plots down one position
+    ax11 = fig.add_subplot(gs[6, 0])  # Preferred Shares Outstanding
     ax11.plot(simulation.index, simulation['preferred_shares'], 'b-', 
              label='Preferred Shares', linewidth=2)
     ax11.set_ylabel('Number of Shares')
     ax11.set_title('Preferred Shares Outstanding')
     ax11.yaxis.set_major_formatter(millions_formatter)
     
-    ax12 = fig.add_subplot(gs[5, 1])  # Cumulative Preferred Dividends
+    ax12 = fig.add_subplot(gs[6, 1])  # Cumulative Preferred Dividends
     cumulative_dividends = simulation['quarterly_dividend'].cumsum()
     ax12.plot(simulation.index, cumulative_dividends, 'g-', 
              label='Cumulative Dividends', linewidth=2)
@@ -657,8 +675,23 @@ def plot_simulation_results(simulation):
     if cumulative_dividends.max() > 1e6:
         ax12.yaxis.set_major_formatter(millions_formatter)
 
+    # Add Market Cap to Cumulative Dividends Ratio plot
+    ax13 = fig.add_subplot(gs[7, 0])  # New subplot
+    
+    # Calculate cumulative dividends and ratio
+    cumulative_dividends = simulation['quarterly_dividend'].fillna(0).cumsum()
+    # Only calculate ratio where cumulative dividends > 0
+    valid_dates = cumulative_dividends > 0
+    ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates]
+    
+    ax13.plot(simulation.index[valid_dates], ratio, 'r-', 
+             label='Market Cap / Cumulative Dividends', linewidth=2)
+    ax13.set_ylabel('Ratio')
+    ax13.set_title('Market Cap to Cumulative Dividends Ratio')
+    ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
+
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12]:
+    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax10b, ax11, ax12, ax13]:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
@@ -718,6 +751,8 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
             f.write(f"mNAV: {yearly_metrics.loc[year, 'mNAV']:,.4f}\n")
             f.write(f"Market Cap: ${yearly_metrics.loc[year, 'Market Cap (USD)']:,.2f}\n")
             f.write(f"BTC per 1000 Shares: {yearly_metrics.loc[year, 'BTC per 1000 Shares']:,.4f}\n")
+            if 'Market Cap to Dividends Ratio' in yearly_metrics.columns and not pd.isna(yearly_metrics.loc[year, 'Market Cap to Dividends Ratio']):
+                f.write(f"Market Cap to Dividends Ratio: {yearly_metrics.loc[year, 'Market Cap to Dividends Ratio']:,.1f}x\n")
             f.write("----------------------------\n\n")
     
     # Print summary statistics
