@@ -9,10 +9,18 @@ from mnav_prediction import calculate_mnav_with_volatility
 from data_sources import (
     get_metaplanet_3350_data,
     get_bitcoin_historical_data,
-    get_previous_day_btc
+    get_previous_day_btc,
+    get_historical_bitcoin_data_for_cagr  # Add this import
 )
 from pandas.tseries.holiday import AbstractHolidayCalendar, Holiday, nearest_workday
 from pandas.tseries.offsets import CustomBusinessDay
+from volatility_analysis import (
+    calculate_historical_volatility,
+    calculate_implied_volatility,  # Add this import
+    fit_power_law_params,
+    calculate_support_resistance,
+    generate_realistic_noise
+)
 
 def get_bitcoin_holdings():
     """
@@ -131,9 +139,13 @@ def predict_bitcoin_price(historical_data, end_date="2030-12-31"):
     future_prices = predict_bitcoin_prices(
         start_date=start_date,
         end_date=end_date,
-        last_price=last_price
+        last_price=last_price,
+        historical_data=historical_data
     )
-    return future_prices['Price']
+    
+    # Ensure future_prices is a float Series before assignment
+    future_prices = future_prices.astype(float)
+    return future_prices
 
 def is_tse_trading_day(date):
     """Check if date is a Tokyo Stock Exchange trading day"""
@@ -179,6 +191,16 @@ def calculate_weekly_revenue(market_cap, current_date=None):
         return secondary_revenue + preferred_revenue
     
     return secondary_revenue
+
+def calculate_rolling_cagr(prices, window=365):
+    """Calculate rolling 1-year Compound Annual Growth Rate for given price series"""
+    # Calculate compound annual growth rate: (end_value/start_value)^(1/years) - 1
+    # For 1-year window, time period = 1, so formula simplifies to:
+    start_prices = prices.shift(window)
+    rolling_cagr = np.power(prices / start_prices, 1.0/1.0) - 1
+    # Convert to percentage
+    rolling_cagr = rolling_cagr * 100
+    return rolling_cagr
 
 def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings, start_date=None, end_date="2030-12-31"):
     """Simulates Metaplanet metrics through 2030"""
@@ -241,7 +263,8 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         last_known_date = simulation[simulation['btc_price'].notna()].index[-1]
         last_known_price = simulation.loc[last_known_date, 'btc_price']
         future_prices = predict_bitcoin_price(btc_data, end_date)
-        simulation.loc[missing_dates, 'btc_price'] = future_prices
+        # Ensure index alignment and proper dtype
+        simulation.loc[missing_dates, 'btc_price'] = future_prices.reindex(missing_dates).astype(float)
     
     # Fill any remaining gaps
     simulation['btc_price'] = simulation['btc_price'].ffill()
@@ -428,9 +451,9 @@ def plot_simulation_results(simulation):
     # Update simulation's BTC holdings to match complete series
     simulation['btc_holdings'] = complete_holdings[simulation.index]
     
-    # Create figure with more subplots
-    fig = plt.figure(figsize=(15, 16))  # Made figure taller
-    gs = GridSpec(4, 2, figure=fig)  # Changed from 3,2 to 4,2
+    # Create figure with standard subplot grid
+    fig = plt.figure(figsize=(15, 20))  # Adjust height back to original
+    gs = GridSpec(5, 2, figure=fig)  # Back to 5 rows, 2 columns
 
     def format_millions(x, pos):
         """Format large numbers in millions"""
@@ -505,8 +528,41 @@ def plot_simulation_results(simulation):
     ax8.set_title('Bitcoin per 1000 Shares')
     ax8.set_ylim(btc_per_1000.min() * 0.95, btc_per_1000.max() * 1.05)
     
+    # Get historical Bitcoin data for CAGR calculation
+    historical_btc = get_historical_bitcoin_data_for_cagr()
+    
+    # Combine historical and simulated prices for CAGR
+    all_prices = pd.Series()
+    if not historical_btc.empty:
+        all_prices = pd.concat([historical_btc, simulation['btc_price']])
+        all_prices = all_prices[~all_prices.index.duplicated(keep='last')]
+        all_prices = all_prices.sort_index()
+    else:
+        all_prices = simulation['btc_price']
+    
+    # Calculate rolling CAGR
+    rolling_cagr = calculate_rolling_cagr(all_prices)
+    
+    # Add CAGR plot in standard subplot position
+    ax9 = fig.add_subplot(gs[4, 0])  # Place in bottom row, left column
+    ax9.plot(rolling_cagr.index, rolling_cagr, 'b-', label='1-Year CAGR', linewidth=2)
+    ax9.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+    ax9.set_ylabel('CAGR (%)')
+    ax9.set_title('Bitcoin 1-Year Rolling CAGR')
+    ax9.set_ylim(-20, 150)  # Changed upper limit from 120 to 150
+    ax9.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    
+    # Add Implied Volatility plot in standard subplot position
+    ax10 = fig.add_subplot(gs[4, 1])  # Place in bottom row, right column
+    implied_vol = calculate_implied_volatility(simulation['stock_price'])
+    ax10.plot(simulation.index, implied_vol, 'r-', label='30-Day Implied Vol', linewidth=2)
+    ax10.set_ylabel('Volatility (%)')
+    ax10.set_title('Stock Implied Volatility')
+    ax10.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax10.set_ylim(75, 350)  # Set y-axis limits between 75% and 300%
+    
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]:
+    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10]:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
@@ -602,4 +658,3 @@ if __name__ == "__main__":
     # Example usage: provide your own start_date, initial_shares, and initial_btc
     # simulation_results = run_complete_simulation("2024-04-01", "2030-12-31", 1234567, 100)
     simulation_results = run_complete_simulation()
-
