@@ -662,27 +662,17 @@ def plot_simulation_results(simulation):
     ax9.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
                  simulation['shares_outstanding'].max() * 1.05)
     ax9.yaxis.set_major_formatter(millions_formatter)
-    
-    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution Model #1
-    diluted_shares = simulation['shares_outstanding'].diff()
-    diluted_shares.iloc[0] = 0  # Set first day's dilution to 0 using iloc
-    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution (Model #1)', linewidth=2)
-    ax10.set_ylabel('Shares Issued')
-    ax10.set_title('Daily Share Dilution Model #1')
-    ax10.set_ylim(0, diluted_shares.max() * 1.05)
-    if diluted_shares.max() > 1e6:
-        ax10.yaxis.set_major_formatter(millions_formatter)
 
-    # Add Model #2 dilution plot
-    ax10b = fig.add_subplot(gs[5, 1])  # Daily Share Dilution Model #2
+    # Add dilution plot
+    ax10 = fig.add_subplot(gs[5, 1])  # Daily Share Dilution
     model2_dilution = calculate_daily_dilution(simulation['stock_price'], simulation['volume'])
-    ax10b.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
-              label='Daily Share Dilution (Model #2)', linewidth=2)
-    ax10b.set_ylabel('Shares Issued')
-    ax10b.set_title('Daily Share Dilution Model #2')
-    ax10b.set_ylim(0, model2_dilution['dilution_shares'].max() * 1.05)
+    ax10.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
+              label='Daily Share Dilution', linewidth=2)
+    ax10.set_ylabel('Shares Issued')
+    ax10.set_title('Daily Share Dilution')
+    ax10.set_ylim(0, model2_dilution['dilution_shares'].max() * 1.05)
     if model2_dilution['dilution_shares'].max() > 1e6:
-        ax10b.yaxis.set_major_formatter(millions_formatter)
+        ax10.yaxis.set_major_formatter(millions_formatter)
     
     # Shift the preferred shares plots down one position
     ax11 = fig.add_subplot(gs[6, 0])  # Preferred Shares Outstanding
@@ -717,7 +707,7 @@ def plot_simulation_results(simulation):
     ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
 
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax10b, ax11, ax12, ax13]:
+    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax10, ax11, ax12, ax13]:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
