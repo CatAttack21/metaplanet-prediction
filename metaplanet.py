@@ -10,13 +10,13 @@ from data_sources import (
     get_metaplanet_3350_data,
     get_bitcoin_historical_data,
     get_previous_day_btc,
-    get_historical_bitcoin_data_for_cagr  # Add this import
+    get_historical_bitcoin_data_for_cagr
 )
 from pandas.tseries.holiday import AbstractHolidayCalendar, Holiday, nearest_workday
 from pandas.tseries.offsets import CustomBusinessDay
 from volatility_analysis import (
     calculate_historical_volatility,
-    calculate_implied_volatility,  # Add this import
+    calculate_implied_volatility,
     fit_power_law_params,
     calculate_support_resistance,
     generate_realistic_noise
@@ -88,12 +88,12 @@ def predict_mnav_with_swings(historical_mnav, btc_price):
     base_prediction = predict_future_mnav(historical_mnav, btc_price)
     return base_prediction * (1 + np.random.normal(0, volatility, len(base_prediction)))
 
-def calculate_stock_price(predicted_mnav, btc_holdings, outstanding_shares):
+def calculate_stock_price(predicted_mnav, btc_holdings, current_shares, btc_price):
     """
-    Calculates stock price based on predicted mNAV
-    Returns: Series with predicted stock prices
+    Calculates stock price based on predicted mNAV, BTC holdings and price
+    Returns: Float with predicted stock price
     """
-    return predicted_mnav * btc_holdings / outstanding_shares
+    return (btc_holdings * btc_price * predicted_mnav) / current_shares
 
 def calculate_daily_dilution(price_data, volume_data):
     """
@@ -165,16 +165,78 @@ def is_tse_trading_day(date):
     ]
     return str(date.date()) not in holidays
 
-def calculate_preferred_shares_revenue(market_cap):
+def calculate_preferred_shares_revenue(market_cap, current_date=None):
     """
-    Calculates revenue from preferred shares based on 50% of dilution proceeds
-    Returns: Float revenue amount in USD
+    Calculates revenue from preferred shares based on percentage of dilution proceeds.
+    All proceeds go directly to Bitcoin purchases.
+    Returns: Tuple of (revenue amount for BTC, dividend reserve amount) in USD
     """
-    annual_dilution_rate = 0.30  # 30% annual dilution
-    weekly_dilution_rate = annual_dilution_rate / 52
-    weekly_dilution_amount = market_cap * weekly_dilution_rate
-    preferred_shares_revenue = weekly_dilution_amount * 0.50  # 50% of dilution
-    return preferred_shares_revenue
+    if not current_date:
+        return 0.0, 0.0
+
+    # Get current and previous share counts
+    current_shares = get_preferred_shares_count(current_date)
+    prev_date = current_date - pd.Timedelta(days=1)
+    prev_shares = get_preferred_shares_count(prev_date)
+    
+    # Calculate new shares issued
+    new_shares = max(0, current_shares - prev_shares)
+    
+    # Calculate revenue from new share sales
+    face_value = 100  # $100 per preferred share
+    revenue = new_shares * face_value
+    
+    # Calculate dividend reserve requirement
+    dividend_reserve = calculate_preferred_dividend_reserve(current_date)
+    
+    return revenue, dividend_reserve
+
+def calculate_preferred_dividend_reserve(current_date):
+    """
+    Calculates how much money needs to be reserved for preferred share dividends
+    Returns: Float amount needed for next quarter's dividend in USD
+    """
+    face_value = 100  # $100 per preferred share
+    annual_yield = 0.05  # 5% annual yield
+    quarterly_yield = annual_yield / 4
+    
+    # Get number of preferred shares (mock data - replace with actual tracking)
+    preferred_shares = get_preferred_shares_count(current_date)
+    
+    # Calculate quarterly dividend requirement
+    quarterly_dividend = face_value * quarterly_yield * preferred_shares
+    
+    # Reserve requirement (one quarter's worth)
+    return quarterly_dividend
+
+def get_preferred_shares_count(current_date):
+    """
+    Gets the number of preferred shares outstanding using a single logistic growth S-curve.
+    Uses sigmoid function to model natural adoption curve from 0 to 100M shares.
+    Returns: Integer number of shares
+    """
+    start_date = pd.Timestamp('2026-01-01')
+    end_date = pd.Timestamp('2030-12-31')
+    max_shares = 100_000_000  # Maximum 100M shares
+    
+    if current_date < start_date:
+        return 0
+        
+    days_from_start = (current_date - start_date).days
+    total_days = (end_date - start_date).days
+    
+    # Normalized time from -6 to 6 for smooth sigmoid curve
+    # This gives us the classic S-curve shape
+    normalized_time = 12 * (days_from_start / total_days - 0.5)
+    
+    # Sigmoid function: 1 / (1 + e^-x)
+    # This creates the S-curve shape
+    progress = 1 / (1 + np.exp(-normalized_time))
+    
+    # Calculate shares based on progress
+    shares = max_shares * progress
+    
+    return int(max(0, min(max_shares, shares)))
 
 def calculate_weekly_revenue(market_cap, current_date=None):
     """
@@ -182,12 +244,11 @@ def calculate_weekly_revenue(market_cap, current_date=None):
     Returns: Float revenue amount in USD
     """
     annual_rate = 0.005  # 0.5% annually
-    weekly_rate = annual_rate / 52  # Convert to weekly rate
+    weekly_rate = annual_rate / 52
     secondary_revenue = market_cap * weekly_rate
     
-    # Only include preferred shares revenue after January 2026
     if current_date and current_date >= pd.Timestamp('2026-01-01'):
-        preferred_revenue = calculate_preferred_shares_revenue(market_cap)
+        preferred_revenue, dividend_reserve = calculate_preferred_shares_revenue(market_cap, current_date)
         return secondary_revenue + preferred_revenue
     
     return secondary_revenue
@@ -294,6 +355,14 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     # Add revenue tracking
     last_revenue_date = sim_start - timedelta(days=1)  # Start counting from day 1
     
+    # Add dividend tracking
+    simulation['preferred_shares'] = simulation.index.map(get_preferred_shares_count)
+    simulation['dividend_reserve'] = 0.0
+    simulation['quarterly_dividend'] = 0.0
+    
+    # Track last dividend date
+    last_dividend_date = pd.Timestamp('2026-01-01') - pd.Timedelta(days=1)
+    
     for date in simulation.index:
         btc_price = simulation.loc[date, 'btc_price']
         btc_value = current_btc * btc_price
@@ -336,7 +405,8 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
 
         # Only update stock price and apply dilution on trading days
         if simulation.loc[date, 'is_trading_day']:
-            stock_price = (btc_value * current_mnav) / current_shares
+            # Replace manual calculation with calculate_stock_price function
+            stock_price = calculate_stock_price(current_mnav, current_btc, current_shares, btc_price)
             
             if date >= sim_start:
                 days_since_dilution += 1
@@ -362,6 +432,28 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
                     current_btc += btc_purchased
                     cumulative_btc_purchased += btc_purchased
                     days_since_dilution = 0
+                
+                # Check for quarterly dividend and preferred share revenue
+                if date >= pd.Timestamp('2026-01-01'):
+                    # Handle preferred share sales revenue
+                    pref_revenue, dividend_reserve = calculate_preferred_shares_revenue(market_cap, date)
+                    if pref_revenue > 0:
+                        # Convert preferred share revenue directly to BTC
+                        btc_from_pref = pref_revenue / btc_price
+                        current_btc += btc_from_pref
+                    
+                    # Handle quarterly dividends
+                    days_since_dividend = (date - last_dividend_date).days
+                    if days_since_dividend >= 90:  # Quarterly
+                        preferred_count = simulation.loc[date, 'preferred_shares']
+                        quarterly_amount = (100 * 0.05 / 4) * preferred_count  # $5 annual per $100 share
+                        simulation.loc[date, 'quarterly_dividend'] = quarterly_amount
+                        
+                        # Instead of reducing BTC purchases, use new dilution for dividends
+                        dividend_shares = quarterly_amount / stock_price
+                        current_shares += dividend_shares
+                        simulation.loc[date, 'dividend_dilution'] = dividend_shares
+                        last_dividend_date = date
                 
                 simulation.loc[date, 'shares_outstanding'] = current_shares
                 simulation.loc[date, 'btc_purchased'] = btc_purchased
@@ -417,6 +509,13 @@ def generate_yearly_metrics(simulation):
                 yearly_metrics.loc[year, 'BTC Holdings'] / 
                 yearly_metrics.loc[year, 'Shares Outstanding']
             ) * 1000
+            
+            # Calculate cumulative dividends for the year
+            year_dividends = year_data['quarterly_dividend'].sum()
+            if year_dividends > 0:  # Only calculate ratio if dividends were paid
+                yearly_metrics.loc[year, 'Market Cap to Dividends Ratio'] = (
+                    yearly_metrics.loc[year, 'Market Cap (USD)'] / year_dividends
+                )
     
     return yearly_metrics
 
@@ -452,8 +551,8 @@ def plot_simulation_results(simulation):
     simulation['btc_holdings'] = complete_holdings[simulation.index]
     
     # Create figure with standard subplot grid
-    fig = plt.figure(figsize=(15, 20))  # Adjust height back to original
-    gs = GridSpec(5, 2, figure=fig)  # Back to 5 rows, 2 columns
+    fig = plt.figure(figsize=(15, 32))  # Increased height for new dilution plot
+    gs = GridSpec(8, 2, figure=fig)  # 8 rows now instead of 7
 
     def format_millions(x, pos):
         """Format large numbers in millions"""
@@ -538,18 +637,61 @@ def plot_simulation_results(simulation):
                  simulation['shares_outstanding'].max() * 1.05)
     ax9.yaxis.set_major_formatter(millions_formatter)
     
-    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution
+    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution Model #1
     diluted_shares = simulation['shares_outstanding'].diff()
     diluted_shares.iloc[0] = 0  # Set first day's dilution to 0 using iloc
-    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution', linewidth=2)
+    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution (Model #1)', linewidth=2)
     ax10.set_ylabel('Shares Issued')
-    ax10.set_title('Daily Share Dilution')
+    ax10.set_title('Daily Share Dilution Model #1')
     ax10.set_ylim(0, diluted_shares.max() * 1.05)
     if diluted_shares.max() > 1e6:
         ax10.yaxis.set_major_formatter(millions_formatter)
+
+    # Add Model #2 dilution plot
+    ax10b = fig.add_subplot(gs[5, 1])  # Daily Share Dilution Model #2
+    model2_dilution = calculate_daily_dilution(simulation['stock_price'], simulation['volume'])
+    ax10b.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
+              label='Daily Share Dilution (Model #2)', linewidth=2)
+    ax10b.set_ylabel('Shares Issued')
+    ax10b.set_title('Daily Share Dilution Model #2')
+    ax10b.set_ylim(0, model2_dilution['dilution_shares'].max() * 1.05)
+    if model2_dilution['dilution_shares'].max() > 1e6:
+        ax10b.yaxis.set_major_formatter(millions_formatter)
     
+    # Shift the preferred shares plots down one position
+    ax11 = fig.add_subplot(gs[6, 0])  # Preferred Shares Outstanding
+    ax11.plot(simulation.index, simulation['preferred_shares'], 'b-', 
+             label='Preferred Shares', linewidth=2)
+    ax11.set_ylabel('Number of Shares')
+    ax11.set_title('Preferred Shares Outstanding')
+    ax11.yaxis.set_major_formatter(millions_formatter)
+    
+    ax12 = fig.add_subplot(gs[6, 1])  # Cumulative Preferred Dividends
+    cumulative_dividends = simulation['quarterly_dividend'].cumsum()
+    ax12.plot(simulation.index, cumulative_dividends, 'g-', 
+             label='Cumulative Dividends', linewidth=2)
+    ax12.set_ylabel('USD')
+    ax12.set_title('Cumulative Preferred Share Dividends')
+    if cumulative_dividends.max() > 1e6:
+        ax12.yaxis.set_major_formatter(millions_formatter)
+
+    # Add Market Cap to Cumulative Dividends Ratio plot
+    ax13 = fig.add_subplot(gs[7, 0])  # New subplot
+    
+    # Calculate cumulative dividends and ratio
+    cumulative_dividends = simulation['quarterly_dividend'].fillna(0).cumsum()
+    # Only calculate ratio where cumulative dividends > 0
+    valid_dates = cumulative_dividends > 0
+    ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates]
+    
+    ax13.plot(simulation.index[valid_dates], ratio, 'r-', 
+             label='Market Cap / Cumulative Dividends', linewidth=2)
+    ax13.set_ylabel('Ratio')
+    ax13.set_title('Market Cap to Cumulative Dividends Ratio')
+    ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
+
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10]:
+    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax10b, ax11, ax12, ax13]:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
@@ -609,6 +751,8 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
             f.write(f"mNAV: {yearly_metrics.loc[year, 'mNAV']:,.4f}\n")
             f.write(f"Market Cap: ${yearly_metrics.loc[year, 'Market Cap (USD)']:,.2f}\n")
             f.write(f"BTC per 1000 Shares: {yearly_metrics.loc[year, 'BTC per 1000 Shares']:,.4f}\n")
+            if 'Market Cap to Dividends Ratio' in yearly_metrics.columns and not pd.isna(yearly_metrics.loc[year, 'Market Cap to Dividends Ratio']):
+                f.write(f"Market Cap to Dividends Ratio: {yearly_metrics.loc[year, 'Market Cap to Dividends Ratio']:,.1f}x\n")
             f.write("----------------------------\n\n")
     
     # Print summary statistics

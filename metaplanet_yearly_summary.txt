@@ -2,62 +2,67 @@ Metaplanet Yearly Key Metrics
 ============================
 
 Year: 2025
-BTC Price: $142,590.94
-Stock Price: $9.47
-BTC Holdings: 12,803.85
-Shares Outstanding: 675,496,213
-mNAV: 3.4743
-Market Cap: $6,698,673,540.61
-BTC per 1000 Shares: 0.0190
+BTC Price: $140,812.82
+Stock Price: $10.07
+BTC Holdings: 13,728.64
+Shares Outstanding: 683,193,915
+mNAV: 3.5596
+Market Cap: $7,098,181,061.29
+BTC per 1000 Shares: 0.0201
 ----------------------------
 
 Year: 2026
-BTC Price: $204,919.33
-Stock Price: $39.15
-BTC Holdings: 48,236.45
-Shares Outstanding: 856,268,797
-mNAV: 3.3887
-Market Cap: $36,254,380,237.99
-BTC per 1000 Shares: 0.0563
+BTC Price: $201,025.70
+Stock Price: $24.80
+BTC Holdings: 32,436.38
+Shares Outstanding: 857,328,960
+mNAV: 3.2408
+Market Cap: $23,914,399,221.96
+BTC per 1000 Shares: 0.0378
+Market Cap to Dividends Ratio: 3,626.6x
 ----------------------------
 
 Year: 2027
-BTC Price: $241,452.03
-Stock Price: $78.53
-BTC Holdings: 139,330.04
-Shares Outstanding: 1,027,297,070
-mNAV: 2.4452
-Market Cap: $123,193,958,924.70
-BTC per 1000 Shares: 0.1356
+BTC Price: $240,433.78
+Stock Price: $44.99
+BTC Holdings: 67,583.61
+Shares Outstanding: 1,035,944,636
+mNAV: 2.8805
+Market Cap: $59,501,920,238.01
+BTC per 1000 Shares: 0.0652
+Market Cap to Dividends Ratio: 969.7x
 ----------------------------
 
 Year: 2028
-BTC Price: $327,970.84
-Stock Price: $258.49
-BTC Holdings: 379,147.21
-Shares Outstanding: 1,216,044,846
-mNAV: 2.5588
-Market Cap: $455,755,375,902.00
-BTC per 1000 Shares: 0.3118
+BTC Price: $329,025.81
+Stock Price: $93.09
+BTC Holdings: 127,944.58
+Shares Outstanding: 1,217,919,126
+mNAV: 2.6415
+Market Cap: $154,230,185,212.56
+BTC per 1000 Shares: 0.1051
+Market Cap to Dividends Ratio: 551.8x
 ----------------------------
 
 Year: 2029
-BTC Price: $490,172.02
-Stock Price: $579.43
-BTC Holdings: 899,173.51
-Shares Outstanding: 1,386,201,157
-mNAV: 1.8376
-Market Cap: $1,611,663,378,085.19
-BTC per 1000 Shares: 0.6487
+BTC Price: $491,369.54
+Stock Price: $161.08
+BTC Holdings: 197,944.72
+Shares Outstanding: 1,412,051,789
+mNAV: 2.3497
+Market Cap: $356,026,520,726.34
+BTC per 1000 Shares: 0.1402
+Market Cap to Dividends Ratio: 772.0x
 ----------------------------
 
 Year: 2030
-BTC Price: $638,992.19
-Stock Price: $1,625.14
-BTC Holdings: 1,935,426.42
-Shares Outstanding: 1,537,283,744
-mNAV: 2.0097
-Market Cap: $4,522,367,586,392.17
-BTC per 1000 Shares: 1.2590
+BTC Price: $647,142.08
+Stock Price: $227.99
+BTC Holdings: 264,904.38
+Shares Outstanding: 1,585,651,023
+mNAV: 2.1067
+Market Cap: $627,600,904,619.58
+BTC per 1000 Shares: 0.1671
+Market Cap to Dividends Ratio: 1,265.1x
 ----------------------------
 
