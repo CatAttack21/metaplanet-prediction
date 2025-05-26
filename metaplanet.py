@@ -165,15 +165,44 @@ def is_tse_trading_day(date):
     ]
     return str(date.date()) not in holidays
 
-def calculate_preferred_shares_revenue(market_cap):
+def calculate_preferred_shares_revenue(market_cap, current_date=None):
     """
-    Calculates revenue from preferred shares based on 50% of dilution proceeds
+    Calculates revenue from preferred shares based on percentage of dilution proceeds
+    that varies over time following a rise and fall pattern:
+    - Jan 2026: 1% of dilution
+    - Jan 2027: 20% of dilution
+    - Dec 2030: 5% of dilution
     Returns: Float revenue amount in USD
     """
+    if not current_date:
+        return 0.0
+
+    # Define key dates and percentages
+    start_date = pd.Timestamp('2026-01-01')
+    peak_date = pd.Timestamp('2027-01-01')
+    end_date = pd.Timestamp('2030-12-31')
+    
+    # Convert dates to days from start for calculation
+    days_from_start = (current_date - start_date).days
+    total_days = (end_date - start_date).days
+    days_to_peak = (peak_date - start_date).days
+    
+    if days_from_start < 0:
+        return 0.0
+        
+    if days_from_start <= days_to_peak:
+        # Rise phase: 1% to 20%
+        progress = days_from_start / days_to_peak
+        revenue_percentage = 0.01 + (0.19 * progress)
+    else:
+        # Fall phase: 20% to 5%
+        progress = (days_from_start - days_to_peak) / (total_days - days_to_peak)
+        revenue_percentage = 0.20 - (0.15 * progress)
+
     annual_dilution_rate = 0.30  # 30% annual dilution
     weekly_dilution_rate = annual_dilution_rate / 52
     weekly_dilution_amount = market_cap * weekly_dilution_rate
-    preferred_shares_revenue = weekly_dilution_amount * 0.50  # 50% of dilution
+    preferred_shares_revenue = weekly_dilution_amount * revenue_percentage
     return preferred_shares_revenue
 
 def calculate_weekly_revenue(market_cap, current_date=None):
@@ -187,7 +216,7 @@ def calculate_weekly_revenue(market_cap, current_date=None):
     
     # Only include preferred shares revenue after January 2026
     if current_date and current_date >= pd.Timestamp('2026-01-01'):
-        preferred_revenue = calculate_preferred_shares_revenue(market_cap)
+        preferred_revenue = calculate_preferred_shares_revenue(market_cap, current_date)
         return secondary_revenue + preferred_revenue
     
     return secondary_revenue
