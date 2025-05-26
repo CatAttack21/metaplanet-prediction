@@ -97,7 +97,7 @@ def calculate_stock_price(predicted_mnav, btc_holdings, current_shares, btc_pric
 
 def calculate_daily_dilution(price_data, volume_data):
     """
-    Calculates daily dilution and funds raised
+    Calculates daily dilution and funds raised with linearly decreasing percentage
     Returns: DataFrame with dilution amount and funds raised
     """
     daily_returns = price_data.pct_change()
@@ -105,9 +105,25 @@ def calculate_daily_dilution(price_data, volume_data):
     dilution['dilution_shares'] = 0.0
     dilution['funds_raised'] = 0.0
     
-    mask = daily_returns > 0.03
-    dilution.loc[mask, 'dilution_shares'] = volume_data[mask] * 0.05
-    dilution.loc[mask, 'funds_raised'] = dilution['dilution_shares'] * price_data[mask]
+    # Calculate total days and days elapsed for linear decrease
+    start_date = pd.Timestamp('2025-05-24')
+    end_date = pd.Timestamp('2030-12-31')
+    total_days = (end_date - start_date).days
+    
+    # Process each date
+    for date in dilution.index:
+        if daily_returns.loc[date] > 0.03:  # 3% price increase threshold
+            days_elapsed = (date - start_date).days
+            # Linear decrease from 5% to 1%
+            if date < start_date:
+                dilution_pct = 0.1  # Start at 5%
+            elif date > end_date:
+                dilution_pct = 0.02  # End at 1%
+            else:
+                dilution_pct = 0.05 - (0.04 * (days_elapsed / total_days))  # Linear decrease
+                
+            dilution.loc[date, 'dilution_shares'] = volume_data.loc[date] * dilution_pct
+            dilution.loc[date, 'funds_raised'] = dilution.loc[date, 'dilution_shares'] * price_data.loc[date]
     
     return dilution
 
