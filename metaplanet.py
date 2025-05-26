@@ -577,8 +577,8 @@ def plot_simulation_results(simulation):
     simulation['btc_holdings'] = complete_holdings[simulation.index]
     
     # Create figure with standard subplot grid
-    fig = plt.figure(figsize=(15, 32))  # Increased height for new dilution plot
-    gs = GridSpec(8, 2, figure=fig)  # 8 rows now instead of 7
+    fig = plt.figure(figsize=(15, 28))  # Reduced height since we're removing empty space
+    gs = GridSpec(7, 2, figure=fig)  # 7 rows now instead of 8
 
     def format_millions(x, pos):
         """Format large numbers in millions"""
@@ -663,8 +663,8 @@ def plot_simulation_results(simulation):
                  simulation['shares_outstanding'].max() * 1.05)
     ax9.yaxis.set_major_formatter(millions_formatter)
 
-    # Add dilution plot
-    ax10 = fig.add_subplot(gs[5, 1])  # Daily Share Dilution
+    # Shift these plots up one position each
+    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution (moved from 5,1)
     model2_dilution = calculate_daily_dilution(simulation['stock_price'], simulation['volume'])
     ax10.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
               label='Daily Share Dilution', linewidth=2)
@@ -674,15 +674,15 @@ def plot_simulation_results(simulation):
     if model2_dilution['dilution_shares'].max() > 1e6:
         ax10.yaxis.set_major_formatter(millions_formatter)
     
-    # Shift the preferred shares plots down one position
-    ax11 = fig.add_subplot(gs[6, 0])  # Preferred Shares Outstanding
+    # Shift preferred shares plots up one position
+    ax11 = fig.add_subplot(gs[5, 0])  # Preferred Shares Outstanding (moved from 6,0)
     ax11.plot(simulation.index, simulation['preferred_shares'], 'b-', 
              label='Preferred Shares', linewidth=2)
     ax11.set_ylabel('Number of Shares')
     ax11.set_title('Preferred Shares Outstanding')
     ax11.yaxis.set_major_formatter(millions_formatter)
     
-    ax12 = fig.add_subplot(gs[6, 1])  # Cumulative Preferred Dividends
+    ax12 = fig.add_subplot(gs[5, 1])  # Cumulative Preferred Dividends (moved from 6,1)
     cumulative_dividends = simulation['quarterly_dividend'].cumsum()
     ax12.plot(simulation.index, cumulative_dividends, 'g-', 
              label='Cumulative Dividends', linewidth=2)
@@ -692,7 +692,7 @@ def plot_simulation_results(simulation):
         ax12.yaxis.set_major_formatter(millions_formatter)
 
     # Add Market Cap to Cumulative Dividends Ratio plot
-    ax13 = fig.add_subplot(gs[7, 0])  # New subplot
+    ax13 = fig.add_subplot(gs[6, :])  # Market Cap Ratio (moved from 7,:)
     
     # Calculate cumulative dividends and ratio
     cumulative_dividends = simulation['quarterly_dividend'].fillna(0).cumsum()
@@ -702,12 +702,13 @@ def plot_simulation_results(simulation):
     
     ax13.plot(simulation.index[valid_dates], ratio, 'r-', 
              label='Market Cap / Cumulative Dividends', linewidth=2)
-    ax13.set_ylabel('Ratio')
+    ax13.set_ylabel('Ratio') 
     ax13.set_title('Market Cap to Cumulative Dividends Ratio')
     ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
-
+    ax13.set_ylim(0, 5000)  # Set fixed y-axis range
+    
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax10, ax11, ax12, ax13]:
+    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12, ax13]:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
