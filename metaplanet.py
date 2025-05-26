@@ -88,12 +88,12 @@ def predict_mnav_with_swings(historical_mnav, btc_price):
     base_prediction = predict_future_mnav(historical_mnav, btc_price)
     return base_prediction * (1 + np.random.normal(0, volatility, len(base_prediction)))
 
-def calculate_stock_price(predicted_mnav, btc_holdings, outstanding_shares):
+def calculate_stock_price(predicted_mnav, btc_holdings, current_shares, btc_price):
     """
-    Calculates stock price based on predicted mNAV
-    Returns: Series with predicted stock prices
+    Calculates stock price based on predicted mNAV, BTC holdings and price
+    Returns: Float with predicted stock price
     """
-    return predicted_mnav * btc_holdings / outstanding_shares
+    return (btc_holdings * btc_price * predicted_mnav) / current_shares
 
 def calculate_daily_dilution(price_data, volume_data):
     """
@@ -405,7 +405,8 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
 
         # Only update stock price and apply dilution on trading days
         if simulation.loc[date, 'is_trading_day']:
-            stock_price = (btc_value * current_mnav) / current_shares
+            # Replace manual calculation with calculate_stock_price function
+            stock_price = calculate_stock_price(current_mnav, current_btc, current_shares, btc_price)
             
             if date >= sim_start:
                 days_since_dilution += 1
