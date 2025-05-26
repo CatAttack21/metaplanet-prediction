@@ -577,8 +577,8 @@ def plot_simulation_results(simulation):
     simulation['btc_holdings'] = complete_holdings[simulation.index]
     
     # Create figure with standard subplot grid
-    fig = plt.figure(figsize=(15, 32))  # Increased height for new dilution plot
-    gs = GridSpec(8, 2, figure=fig)  # 8 rows now instead of 7
+    fig = plt.figure(figsize=(15, 28))  # Reduced height since we're removing empty space
+    gs = GridSpec(7, 2, figure=fig)  # 7 rows now instead of 8
 
     def format_millions(x, pos):
         """Format large numbers in millions"""
@@ -588,7 +588,7 @@ def plot_simulation_results(simulation):
     
     # Left Column (Bitcoin metrics)
     ax1 = fig.add_subplot(gs[0, 0])  # Bitcoin Price
-    ax1.plot(simulation.index, simulation['btc_price'], 'b-', label='BTC Price', linewidth=2)
+    ax1.plot(simulation.index, simulation['btc_price'], 'orange', label='BTC Price', linewidth=2)
     ax1.set_ylabel('BTC Price (USD)')
     ax1.set_title('Bitcoin Price')
     ax1.set_ylim(simulation['btc_price'].min() * 0.95, simulation['btc_price'].max() * 1.05)
@@ -605,7 +605,7 @@ def plot_simulation_results(simulation):
     else:
         all_prices = simulation['btc_price']
     rolling_cagr = calculate_rolling_cagr(all_prices)
-    ax2.plot(rolling_cagr.index, rolling_cagr, 'b-', label='1-Year CAGR', linewidth=2)
+    ax2.plot(rolling_cagr.index, rolling_cagr, 'orange', label='1-Year CAGR', linewidth=2)
     ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
     ax2.set_ylabel('CAGR (%)')
     ax2.set_title('Bitcoin 1-Year Rolling CAGR')
@@ -621,13 +621,13 @@ def plot_simulation_results(simulation):
     
     ax4 = fig.add_subplot(gs[3, 0])  # BTC per 1000 shares
     btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
-    ax4.plot(simulation.index, btc_per_1000, 'r-', label='BTC per 1000 Shares', linewidth=2)
+    ax4.plot(simulation.index, btc_per_1000, 'b-', label='BTC per 1000 Shares', linewidth=2)
     ax4.set_ylabel('BTC Amount')
     ax4.set_title('Bitcoin per 1000 Shares')
     ax4.set_ylim(btc_per_1000.min() * 0.95, btc_per_1000.max() * 1.05)
     
     ax5 = fig.add_subplot(gs[4, 0])  # Daily Volume
-    ax5.plot(simulation.index, simulation['volume'], 'b-', label='Daily Volume', linewidth=2)
+    ax5.plot(simulation.index, simulation['volume'], 'r-', label='Daily Volume', linewidth=2)
     ax5.set_ylabel('Number of Shares')
     ax5.set_title('Daily Trading Volume')
     ax5.set_ylim(0, simulation['volume'].max() * 1.05)
@@ -641,60 +641,50 @@ def plot_simulation_results(simulation):
     ax6.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
     
     ax7 = fig.add_subplot(gs[1, 1])  # mNAV
-    ax7.plot(simulation.index, simulation['mnav'], 'r-', label='mNAV', linewidth=2)
+    ax7.plot(simulation.index, simulation['mnav'], 'g-', label='mNAV', linewidth=2)
     ax7.set_ylabel('mNAV')
     ax7.set_title('mNAV')
     ax7.set_ylim(simulation['mnav'].min() * 0.95, simulation['mnav'].max() * 1.05)
     
     ax8 = fig.add_subplot(gs[2, 1])  # Implied Volatility
     implied_vol = calculate_implied_volatility(simulation['stock_price'])
-    ax8.plot(simulation.index, implied_vol, 'r-', label='30-Day Implied Vol', linewidth=2)
+    ax8.plot(simulation.index, implied_vol, 'g-', label='30-Day Implied Vol', linewidth=2)
     ax8.set_ylabel('Volatility (%)')
     ax8.set_title('Stock Implied Volatility')
     ax8.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
     ax8.set_ylim(75, 300)
 
     ax9 = fig.add_subplot(gs[3, 1])  # Shares Outstanding
-    ax9.plot(simulation.index, simulation['shares_outstanding'], 'g-', 
+    ax9.plot(simulation.index, simulation['shares_outstanding'], 'r-', 
             label='Shares Outstanding', linewidth=2)
     ax9.set_ylabel('Shares Outstanding (Millions)')
     ax9.set_title('Shares Outstanding')
     ax9.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
                  simulation['shares_outstanding'].max() * 1.05)
     ax9.yaxis.set_major_formatter(millions_formatter)
-    
-    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution Model #1
-    diluted_shares = simulation['shares_outstanding'].diff()
-    diluted_shares.iloc[0] = 0  # Set first day's dilution to 0 using iloc
-    ax10.plot(simulation.index, diluted_shares, 'g-', label='Daily Share Dilution (Model #1)', linewidth=2)
-    ax10.set_ylabel('Shares Issued')
-    ax10.set_title('Daily Share Dilution Model #1')
-    ax10.set_ylim(0, diluted_shares.max() * 1.05)
-    if diluted_shares.max() > 1e6:
-        ax10.yaxis.set_major_formatter(millions_formatter)
 
-    # Add Model #2 dilution plot
-    ax10b = fig.add_subplot(gs[5, 1])  # Daily Share Dilution Model #2
+    # Shift these plots up one position each
+    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution (moved from 5,1)
     model2_dilution = calculate_daily_dilution(simulation['stock_price'], simulation['volume'])
-    ax10b.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
-              label='Daily Share Dilution (Model #2)', linewidth=2)
-    ax10b.set_ylabel('Shares Issued')
-    ax10b.set_title('Daily Share Dilution Model #2')
-    ax10b.set_ylim(0, model2_dilution['dilution_shares'].max() * 1.05)
+    ax10.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
+              label='Daily Share Dilution', linewidth=2)
+    ax10.set_ylabel('Shares Issued')
+    ax10.set_title('Daily Share Dilution')
+    ax10.set_ylim(0, model2_dilution['dilution_shares'].max() * 1.05)
     if model2_dilution['dilution_shares'].max() > 1e6:
-        ax10b.yaxis.set_major_formatter(millions_formatter)
+        ax10.yaxis.set_major_formatter(millions_formatter)
     
-    # Shift the preferred shares plots down one position
-    ax11 = fig.add_subplot(gs[6, 0])  # Preferred Shares Outstanding
-    ax11.plot(simulation.index, simulation['preferred_shares'], 'b-', 
+    # Shift preferred shares plots up one position
+    ax11 = fig.add_subplot(gs[5, 0])  # Preferred Shares Outstanding (moved from 6,0)
+    ax11.plot(simulation.index, simulation['preferred_shares'], '#DAA520', 
              label='Preferred Shares', linewidth=2)
     ax11.set_ylabel('Number of Shares')
     ax11.set_title('Preferred Shares Outstanding')
     ax11.yaxis.set_major_formatter(millions_formatter)
     
-    ax12 = fig.add_subplot(gs[6, 1])  # Cumulative Preferred Dividends
+    ax12 = fig.add_subplot(gs[5, 1])  # Cumulative Preferred Dividends (moved from 6,1)
     cumulative_dividends = simulation['quarterly_dividend'].cumsum()
-    ax12.plot(simulation.index, cumulative_dividends, 'g-', 
+    ax12.plot(simulation.index, cumulative_dividends, '#DAA520', 
              label='Cumulative Dividends', linewidth=2)
     ax12.set_ylabel('USD')
     ax12.set_title('Cumulative Preferred Share Dividends')
@@ -702,7 +692,7 @@ def plot_simulation_results(simulation):
         ax12.yaxis.set_major_formatter(millions_formatter)
 
     # Add Market Cap to Cumulative Dividends Ratio plot
-    ax13 = fig.add_subplot(gs[7, 0])  # New subplot
+    ax13 = fig.add_subplot(gs[6, :])  # Market Cap Ratio (moved from 7,:)
     
     # Calculate cumulative dividends and ratio
     cumulative_dividends = simulation['quarterly_dividend'].fillna(0).cumsum()
@@ -710,14 +700,15 @@ def plot_simulation_results(simulation):
     valid_dates = cumulative_dividends > 0
     ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates]
     
-    ax13.plot(simulation.index[valid_dates], ratio, 'r-', 
+    ax13.plot(simulation.index[valid_dates], ratio, '#DAA520', 
              label='Market Cap / Cumulative Dividends', linewidth=2)
-    ax13.set_ylabel('Ratio')
+    ax13.set_ylabel('Ratio') 
     ax13.set_title('Market Cap to Cumulative Dividends Ratio')
     ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
-
+    ax13.set_ylim(0, 5000)  # Set fixed y-axis range
+    
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax10b, ax11, ax12, ax13]:
+    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12, ax13]:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
