@@ -588,7 +588,7 @@ def plot_simulation_results(simulation):
     
     # Left Column (Bitcoin metrics)
     ax1 = fig.add_subplot(gs[0, 0])  # Bitcoin Price
-    ax1.plot(simulation.index, simulation['btc_price'], 'b-', label='BTC Price', linewidth=2)
+    ax1.plot(simulation.index, simulation['btc_price'], 'orange', label='BTC Price', linewidth=2)
     ax1.set_ylabel('BTC Price (USD)')
     ax1.set_title('Bitcoin Price')
     ax1.set_ylim(simulation['btc_price'].min() * 0.95, simulation['btc_price'].max() * 1.05)
@@ -605,7 +605,7 @@ def plot_simulation_results(simulation):
     else:
         all_prices = simulation['btc_price']
     rolling_cagr = calculate_rolling_cagr(all_prices)
-    ax2.plot(rolling_cagr.index, rolling_cagr, 'b-', label='1-Year CAGR', linewidth=2)
+    ax2.plot(rolling_cagr.index, rolling_cagr, 'orange', label='1-Year CAGR', linewidth=2)
     ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
     ax2.set_ylabel('CAGR (%)')
     ax2.set_title('Bitcoin 1-Year Rolling CAGR')
@@ -621,13 +621,13 @@ def plot_simulation_results(simulation):
     
     ax4 = fig.add_subplot(gs[3, 0])  # BTC per 1000 shares
     btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
-    ax4.plot(simulation.index, btc_per_1000, 'r-', label='BTC per 1000 Shares', linewidth=2)
+    ax4.plot(simulation.index, btc_per_1000, 'b-', label='BTC per 1000 Shares', linewidth=2)
     ax4.set_ylabel('BTC Amount')
     ax4.set_title('Bitcoin per 1000 Shares')
     ax4.set_ylim(btc_per_1000.min() * 0.95, btc_per_1000.max() * 1.05)
     
     ax5 = fig.add_subplot(gs[4, 0])  # Daily Volume
-    ax5.plot(simulation.index, simulation['volume'], 'b-', label='Daily Volume', linewidth=2)
+    ax5.plot(simulation.index, simulation['volume'], 'r-', label='Daily Volume', linewidth=2)
     ax5.set_ylabel('Number of Shares')
     ax5.set_title('Daily Trading Volume')
     ax5.set_ylim(0, simulation['volume'].max() * 1.05)
@@ -641,21 +641,21 @@ def plot_simulation_results(simulation):
     ax6.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
     
     ax7 = fig.add_subplot(gs[1, 1])  # mNAV
-    ax7.plot(simulation.index, simulation['mnav'], 'r-', label='mNAV', linewidth=2)
+    ax7.plot(simulation.index, simulation['mnav'], 'g-', label='mNAV', linewidth=2)
     ax7.set_ylabel('mNAV')
     ax7.set_title('mNAV')
     ax7.set_ylim(simulation['mnav'].min() * 0.95, simulation['mnav'].max() * 1.05)
     
     ax8 = fig.add_subplot(gs[2, 1])  # Implied Volatility
     implied_vol = calculate_implied_volatility(simulation['stock_price'])
-    ax8.plot(simulation.index, implied_vol, 'r-', label='30-Day Implied Vol', linewidth=2)
+    ax8.plot(simulation.index, implied_vol, 'g-', label='30-Day Implied Vol', linewidth=2)
     ax8.set_ylabel('Volatility (%)')
     ax8.set_title('Stock Implied Volatility')
     ax8.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
     ax8.set_ylim(75, 300)
 
     ax9 = fig.add_subplot(gs[3, 1])  # Shares Outstanding
-    ax9.plot(simulation.index, simulation['shares_outstanding'], 'g-', 
+    ax9.plot(simulation.index, simulation['shares_outstanding'], 'r-', 
             label='Shares Outstanding', linewidth=2)
     ax9.set_ylabel('Shares Outstanding (Millions)')
     ax9.set_title('Shares Outstanding')
@@ -676,7 +676,7 @@ def plot_simulation_results(simulation):
     
     # Shift preferred shares plots up one position
     ax11 = fig.add_subplot(gs[5, 0])  # Preferred Shares Outstanding (moved from 6,0)
-    ax11.plot(simulation.index, simulation['preferred_shares'], 'b-', 
+    ax11.plot(simulation.index, simulation['preferred_shares'], '#DAA520', 
              label='Preferred Shares', linewidth=2)
     ax11.set_ylabel('Number of Shares')
     ax11.set_title('Preferred Shares Outstanding')
@@ -684,7 +684,7 @@ def plot_simulation_results(simulation):
     
     ax12 = fig.add_subplot(gs[5, 1])  # Cumulative Preferred Dividends (moved from 6,1)
     cumulative_dividends = simulation['quarterly_dividend'].cumsum()
-    ax12.plot(simulation.index, cumulative_dividends, 'g-', 
+    ax12.plot(simulation.index, cumulative_dividends, '#DAA520', 
              label='Cumulative Dividends', linewidth=2)
     ax12.set_ylabel('USD')
     ax12.set_title('Cumulative Preferred Share Dividends')
@@ -700,7 +700,7 @@ def plot_simulation_results(simulation):
     valid_dates = cumulative_dividends > 0
     ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates]
     
-    ax13.plot(simulation.index[valid_dates], ratio, 'r-', 
+    ax13.plot(simulation.index[valid_dates], ratio, '#DAA520', 
              label='Market Cap / Cumulative Dividends', linewidth=2)
     ax13.set_ylabel('Ratio') 
     ax13.set_title('Market Cap to Cumulative Dividends Ratio')
