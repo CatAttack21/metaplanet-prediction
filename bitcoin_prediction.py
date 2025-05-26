@@ -8,7 +8,7 @@ def btc_power_law_formula(index):
     genesis = pd.Timestamp('2009-01-03')
     days_since_genesis = (index - genesis).days.values.astype(float)
     days_since_genesis[days_since_genesis < 1] = 1
-    price = 10**-17 * (days_since_genesis ** 5.95)
+    price = 10**-17 * (days_since_genesis ** 5.92)
     support = 0.5 * price
     resistance = 4.0 * price
     return support, price, resistance
@@ -22,7 +22,7 @@ def weierstrass_function(t, a=0.5, b=3, n_terms=10):
     return w
 
 def multi_weierstrass(t, configs):
-    """Overlay multiple Weierstrass functions"""
+    """Overlay multiple Weierstrass functions with time-based amplitude"""
     wsum = np.zeros_like(t, dtype=float)
     for cfg in configs:
         w = weierstrass_function(
@@ -32,8 +32,30 @@ def multi_weierstrass(t, configs):
             n_terms=cfg.get('n_terms', 10)
         )
         wsum += cfg.get('weight', 1.0) * w
+    
     wsum = wsum / np.max(np.abs(wsum))
+    # Apply time-based amplitude scaling
+    wsum *= get_time_based_amplitude(t)
     return wsum
+
+def get_time_based_amplitude(t):
+    """Calculate time-based amplitude scaling that transitions from 50% to 20%"""
+    start_date = np.datetime64('2025-01-01')
+    end_date = np.datetime64('2030-01-01')
+    start_amp = 0.5  # 50% swing
+    end_amp = 0.2    # 20% swing
+    
+    # Convert numeric days to datetime
+    dates = pd.to_datetime('2009-01-03') + pd.to_timedelta(t, unit='D')
+    scaling = np.ones_like(t, dtype=float) * end_amp
+    
+    mask = dates < end_date
+    time_fraction = (dates[mask] - start_date) / (end_date - start_date)
+    time_fraction = np.clip(time_fraction, 0, 1)
+    scaling[mask] = start_amp - (start_amp - end_amp) * time_fraction
+    scaling[dates < start_date] = start_amp
+    
+    return scaling
 
 def predict_bitcoin_prices(start_date, end_date, last_price):
     """Predict Bitcoin prices using combined power law and Weierstrass models with smooth transition"""
@@ -43,11 +65,12 @@ def predict_bitcoin_prices(start_date, end_date, last_price):
     _, future_center, _ = btc_power_law_formula(future_dates)
     
     t = np.arange(len(future_df))
-    # Increased Weierstrass weights by another 100%
     configs = [
-        {'a': 0.5, 'b': 3, 'n_terms': 10, 'weight': 1.816, 'scale': 1/730},    # Doubled from 0.908
-        {'a': 0.8, 'b': 2.5, 'n_terms': 8, 'weight': 1.210, 'scale': 1/1825},  # Doubled from 0.605
-        {'a': 0.3, 'b': 2.2, 'n_terms': 6, 'weight': 0.606, 'scale': 1/180}    # Doubled from 0.303
+        {'a': 0.5, 'b': 10, 'n_terms': 10, 'weight': 3.0, 'scale': 1/1460},
+        {'a': 0.2, 'b': 10, 'n_terms': 10, 'weight': 1.0, 'scale': 1/365},
+        {'a': 0.3, 'b': 5, 'n_terms': 20, 'weight': 2.0, 'scale': 1/1800},
+        {'a': 0.3, 'b': 5, 'n_terms': 20, 'weight': 1.5, 'scale': 1/90},
+        {'a': 0.5, 'b': 3, 'n_terms': 30, 'weight': 1.0, 'scale': 1/30}
     ]
     w = multi_weierstrass(t, configs)
     
@@ -57,10 +80,10 @@ def predict_bitcoin_prices(start_date, end_date, last_price):
     prices[0] = initial_price
 
     # Calculate initial trend using linear regression on last 30 days
-    transition_days = 270  # Extended transition period
-    if isinstance(last_price, pd.Series) and len(last_price) >= 180:
-        X = np.arange(180).reshape(-1, 1)
-        y = last_price[-180:].values
+    transition_days = 60  # Extended transition period
+    if isinstance(last_price, pd.Series) and len(last_price) >= 60:
+        X = np.arange(60).reshape(-1, 1)
+        y = last_price[-60:].values
         reg = optimize.minimize(
             lambda x: np.sum((y - (x[0] * X.flatten() + x[1]))**2),
             [0, initial_price],
@@ -89,8 +112,8 @@ def predict_bitcoin_prices(start_date, end_date, last_price):
         else:
             # More power law influence but maintain some volatility
             base_price = future_center[i]
-            osc = w[i] * 0.45  # Reduced from 0.55
-            amplitude = 0.35 * base_price  # Reduced from 0.44
+            osc = w[i] * 0.5  # Reduced from 0.55
+            amplitude = 1.0 * base_price  # Reduced from 0.44
             prices[i] = base_price + osc * amplitude
 
         # Ensure no negative prices and limit daily changes
