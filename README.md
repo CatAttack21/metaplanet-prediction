@@ -1,42 +1,80 @@
 # metaplanet-prediction
 Metaplanet metric prediction
 
+## Bitcoin Price
 
-Let's write a python script into formalized helper functions and a main function.
+- Follow the Bitcoin Power law, price = 10**-17 * (days_since_genesis ** 5.8)
+- Support at 0.5x, Resistance at 4x
+- Superimpose 8 sinusoid functions over varying frequency/amplitude for price action
 
-I was one helper function that pulls the price of Metaplanet 3350 for the last year since April 1st 2024. I also want the volume of Metaplanet 3350 to be captured.
+## Bitcoin CAGR
 
-I want a second helper function that pulls the price of Metaplanet MTPLF for as long as it has traded on OTCQX. I also want the volume of Metaplanet 3350 to be captured.
+- Derived from BTC performance
+- A Rolling window, year-over-year growth of Bitcoin Price
+- Roughly swings between 10%-50% median value
 
-I want a third helper function that pulls the price of Metaplant DN3 for as long as it has traded on the Frankfurt stock exchange. I also want the volume of Metaplanet DN3 to be captured.
+## Bitcoin Holdings
 
-I want a 4th helper function that pulls the price of Bitcoin since 2012. I also want to capture the volume of Bitcoin traded since 2012.
+- Derived from 7800 + purchases
+- Moving Strike Warrants = BTC
+- Bitcoin puts revenue (0.5% market cap annually, cash on hand to sell puts) = BTC
+- Preferred Shares = BTC
 
-I want a 5th helper function that predicts the price of Bitcoin using the Bitcoin Power Curve Cloud Cycle Law.
+## BTC per 1000 shares
 
-I want a 6th helper function that captures the number of outstanding shares of Metaplanet over time since April 1st 2024.
+- Derived from Bitcoin Holdings / Outstanding Shares
 
-I want a 7th helper function that captures the number of bitcoin holdings that Metaplanet holds since April 1st 2024.
+## mNAV
 
-I want an 8th helper function that captures the total value of the bitcoin holdings for Metaplanet
+- Follows a power law, as described by Metaplanet presentations, theoretical_mcap = 35.1221 * (btc_value ** 0.89)
+https://aqsmixvnbavrufgttwsn.supabase.co/storage/v1/object/public/media-resources/en/67fa9191-0efa-467e-8996-71a68ab3a62f/q1-2025-earnings-presentation-20250514T192554478Z.pdf
 
-I want a 9th helper function that calculates the mNAV of Metaplanet. The mNAV is a function of the total market cap of Metaplanet relative to the number of Bitcoin held.
+- 15% chance of any overshoot/undershoot (equal weight)
+- Upside random overshoot between 33% and 400%
+- Downside random overshoot between -50% and -20%
+- Sinusoidal volatility based on random noise
+- Mean reversion strength between 5% and 15%
 
-I want a 10th helper function that calculates the BTC per share of Metaplanet. The BTC per share is a function of  the total bitcoin holdings divided by the total outstanding shares. Keep in mind that the number of outstanding shares keeps growing.
+## Stock Price
 
-I want an 11th helper function that derives the future mNAV based on historical correlation to the price of BTC.
+- Derived from mNAV = Market Cap / Bitcoin NAV
+- Price = (mNAV * Bitcoin Price * Bitcoin Holdings) / Outstanding Shares
 
-I want a 12th helper function that predicts the mNAV based on historical swings and correlation to the BTC price.
+## Stock Implied Volatility
 
-I want a 13th helper function that calculates the stock price of metaplanet 3350 based on the predicted mNAV. Keep in mind that bitcoin holdings don't change when the stock price changes
+- Derived from Stock Price fluctuations, 30-day window
 
-I want a 14th helper function that calculates the daily dilution of Metaplanet. Metaplanet will only dilute up to 10% of the daily volume if the price is up by at least 3%. When Metaplanet dilutes, calculate the total funds gained by the sale of 10% of the daily volume of the stock at the current day's price.
+## Shares Outstanding 
 
-I want a 15th helper function that calculates the amount of Bitcoin that Metaplanet buys. Metaplanet buys as much Bitcoin as their stock sale provides, divided by the price of Bitcoin.
+- Derived from Initial Shares + Dilution
 
+## Daily Trading Volume
 
-You are making a complex Bitcoin price and Bitcoin treasury stock price analysis tool. You are a highly successful python programmer and have deep knowledge of the interaction between Bitcoin price and Bitcoin Treasury metrics such as mNAV, stock price, and dilution.
+- Takes the initial 3350 volume and normalizes the median to 10% of outstanding shares (Mimics MSTR performance through 2025)
+- Weekly Volume factor between 20%-100%
+- Apply a factor of mNAV to boost during high mNAV
+- Add a component of random volatility noise, this dominates at low volume
+- Bound final between 1% and 33% of outstanding shares
 
-I want a system that will plot the historical data that I've provided. I want these plots to be real representations and the axes of these plots aligned to those values.
+## Daily Share Dilution
 
-After the historical data is populated, I want a forward simulation. The key of the simulation is that mNAV is sensitive to the Bitcoin price by a factor of 10:1, with large % swings in Bitcoin price producing a small % change to mNAV. When mNAV rises, volume goes higher. When mNAV falls, volume is lower. When the stock price rises, they dilute the volume of the stock at a maximum of 3% of the daily total volume.
+- Dilution occurs only if the stock price increases
+- Dilution only occurs 1x every 3 days
+- Dilution only occurs on TSE trading days (weekdays)
+- Dilution Decay models that starts at 10% of daily volume and drops to 2%
+
+## Preferred Shares
+
+- S-curve adoption model of ATM that asymptotes to 100 Million shares
+- $100 face value
+- 5% annual yield
+
+## Cumulative Preferred Share Dividends
+
+- Payouts made quarterly, targeting 5% annual return
+- Payouts made according to the shares outstanding
+- Dividends are paid by common stock dilution, limits BTC purchases
+
+## Market Cap to Cumulative Dividends Ratio
+
+- A gross check on whether preferred shares and dividends are too high
