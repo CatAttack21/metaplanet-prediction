@@ -2,38 +2,6 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
-def weierstrass_function(t, a=0.5, b=3, n_terms=10):
-    """Generate Weierstrass-like function for mNAV volatility"""
-    w = np.zeros_like(t, dtype=float)
-    for n in range(n_terms):
-        w += a**n * np.cos(np.pi * b**n * t)
-    w = w / np.max(np.abs(w))
-    return w
-
-def multi_weierstrass_mnav(t, days_scale=60):  # Doubled the days_scale to lower frequency
-    """Generate combined Weierstrass functions for mNAV"""
-    configs = [
-        {'a': 0.4, 'b': 2.5, 'n_terms': 8, 'weight': 0.5, 'scale': 1/days_scale},
-        {'a': 0.6, 'b': 2.0, 'n_terms': 6, 'weight': 0.3, 'scale': 1/(days_scale*5)},  # Increased from 3 to 5
-        {'a': 0.3, 'b': 3.0, 'n_terms': 4, 'weight': 0.2, 'scale': 1/(days_scale/2)}   # Reduced from 3 to 2
-    ]
-    
-    wsum = np.zeros_like(t, dtype=float)
-    for cfg in configs:
-        w = weierstrass_function(
-            t * cfg['scale'],
-            a=cfg['a'],
-            b=cfg['b'],
-            n_terms=cfg['n_terms']
-        )
-        wsum += cfg['weight'] * w
-    
-    # Add safety check for division by zero
-    max_abs = np.max(np.abs(wsum))
-    if max_abs < 1e-10:  # If sum is effectively zero
-        return np.zeros_like(t)
-    return wsum / max_abs
-
 def calculate_mnav_with_volatility(btc_value, days_from_start, base_volatility=0.12):
     """
     Calculates mNAV with enhanced volatility and mean reversion
