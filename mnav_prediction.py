@@ -15,7 +15,7 @@ def calculate_mnav_with_volatility(btc_value, days_from_start, base_volatility=0
     if np.random.random() < 0.15:  # 15% chance of setting new overshoot target
         # Generate asymmetric overshoots
         if np.random.random() < 0.5:  # Upside overshoot
-            overshoot = np.random.uniform(1.33, 4.0)
+            overshoot = np.random.uniform(1.33, 2.0)
         else:  # Downside overshoot
             overshoot = np.random.uniform(0.5, 0.8)
         target_mnav = power_law_mnav * overshoot
@@ -23,7 +23,7 @@ def calculate_mnav_with_volatility(btc_value, days_from_start, base_volatility=0
         target_mnav = power_law_mnav
 
     # Calculate volatility and noise
-    volatility = base_volatility * (1 + 0.5 * np.sin(days_from_start / 30))
+    volatility = base_volatility * (1 + 0.2 * np.sin(days_from_start / 30))
     noise = np.random.normal(0, volatility)
     
     # Get previous mNAV (or use power law if first calculation)
