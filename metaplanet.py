@@ -356,13 +356,13 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     # Get historical trading volume data
     if not meta_3350_data.empty and 'Volume' in meta_3350_data.columns:
         # Get last 30 days of volume data
-        recent_volume = meta_3350_data['Volume'].tail(30)
+        recent_volume = meta_3350_data['Volume'].tail(90)
         # Calculate average daily volume as percentage of shares
-        initial_volume_pct = recent_volume.mean() / initial_shares
+        initial_volume_pct = recent_volume.median() / initial_shares
         # Cap the initial volume percentage at reasonable bounds
-        initial_volume_pct = max(0.05, initial_volume_pct)
+        initial_volume_pct = max(0.01, initial_volume_pct)
     else:
-        initial_volume_pct = 0.05  # Default to 5% initial volume
+        initial_volume_pct = 0.01  # Default to 5% initial volume
     
     # Configure exponential decay parameters
     decay_rate = -np.log(0.05) / total_days  # Decay to achieve 10% asymptote
@@ -415,7 +415,7 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         decay_factor = np.exp(-decay_rate * days_elapsed)
         
         # Calculate volume percentage that decays from initial to 10% asymptote
-        volume_pct = 0.10 + (initial_volume_pct - 0.10) * decay_factor
+        volume_pct = 0.05 + (initial_volume_pct - 0.05) * decay_factor
         
         # Add weekly cycle pattern
         days_in_week = (days_in_week + 1) % 5
