@@ -241,7 +241,7 @@ def get_preferred_shares_count(current_date):
     
     # Normalized time from -4 to 4 for a more gradual sigmoid curve
     # Lower multiplier = less steep S-curve = slower initial growth
-    normalized_time = 8 * (days_from_start / total_days - 0.5)
+    normalized_time = 10 * (days_from_start / total_days - 0.5)
     
     # Sigmoid function: 1 / (1 + e^-x)
     # This creates the S-curve shape
@@ -355,17 +355,18 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     
     # Get historical trading volume data
     if not meta_3350_data.empty and 'Volume' in meta_3350_data.columns:
-        # Calculate initial volume as percentage of shares, using 30-day rolling average
-        initial_volume_pct = (meta_3350_data['Volume']
-                            .rolling(window=30, min_periods=1)
-                            .mean()
-                            .iloc[0]) / initial_shares
+        # Get last 30 days of volume data
+        recent_volume = meta_3350_data['Volume'].tail(30)
+        # Calculate average daily volume as percentage of shares
+        initial_volume_pct = recent_volume.mean() / initial_shares
+        # Cap the initial volume percentage at reasonable bounds
+        initial_volume_pct = max(0.05, initial_volume_pct)
     else:
-        initial_volume_pct = 0.20  # Default to 20% initial volume
+        initial_volume_pct = 0.05  # Default to 5% initial volume
     
     # Configure exponential decay parameters
     decay_rate = -np.log(0.05) / total_days  # Decay to achieve 10% asymptote
-    base_volatility = 0.3  # 50% base volatility
+    base_volatility = 0.3  # 30% base volatility
 
     # Add volume cycle counter for weekly pattern
     days_in_week = 0
