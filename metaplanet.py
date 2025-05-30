@@ -241,7 +241,7 @@ def get_preferred_shares_count(current_date):
     
     # Normalized time from -4 to 4 for a more gradual sigmoid curve
     # Lower multiplier = less steep S-curve = slower initial growth
-    normalized_time = 8 * (days_from_start / total_days - 0.5)
+    normalized_time = 10 * (days_from_start / total_days - 0.5)
     
     # Sigmoid function: 1 / (1 + e^-x)
     # This creates the S-curve shape
@@ -355,17 +355,20 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     
     # Get historical trading volume data
     if not meta_3350_data.empty and 'Volume' in meta_3350_data.columns:
-        # Calculate initial volume as percentage of shares, using 30-day rolling average
-        initial_volume_pct = (meta_3350_data['Volume']
-                            .rolling(window=30, min_periods=1)
-                            .mean()
-                            .iloc[0]) / initial_shares
+        # Get last 30 days of volume data
+        recent_volume = meta_3350_data['Volume'].tail(30)
+        # Calculate average daily volume as percentage of shares
+        initial_volume_pct = recent_volume.mean() / initial_shares
+        # Cap the initial volume percentage at reasonable bounds
+        initial_volume_pct = min(0.20, max(0.01, initial_volume_pct))
     else:
-        initial_volume_pct = 0.20  # Default to 20% initial volume
+        initial_volume_pct = 0.01  # More conservative default of 1%
     
+    print(f"Initial volume percentage: {initial_volume_pct:.2%}")
+
     # Configure exponential decay parameters
     decay_rate = -np.log(0.05) / total_days  # Decay to achieve 10% asymptote
-    base_volatility = 0.3  # 50% base volatility
+    base_volatility = 0.3  # 30% base volatility
 
     # Add volume cycle counter for weekly pattern
     days_in_week = 0
@@ -739,7 +742,7 @@ def plot_simulation_results(simulation):
     plt.tight_layout()
     return fig
 
-def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", initial_shares=593210000, initial_btc=7800):
+def run_complete_simulation(start_date="2025-05-29", end_date="2030-12-31", initial_shares=593210000, initial_btc=7800):
     """
     Runs complete simulation and generates visualizations
     Default values:
@@ -748,7 +751,7 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
     - 7800 BTC (approximate current holdings)
     """
     if start_date is None:
-        start_date = "2025-05-24"
+        start_date = "2025-05-29"
     
     print("Starting simulation...")
     
@@ -803,7 +806,7 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
     
     return simulation
 
-def main(start_date="2025-05-24", end_date="2030-12-31", initial_shares=593210000, initial_btc=0):
+def main(start_date="2025-05-29", end_date="2030-12-31", initial_shares=593210000, initial_btc=0):
     """
     Main function to run the complete Metaplanet analysis and simulation
     Args:
@@ -827,4 +830,5 @@ if __name__ == "__main__":
     # Example usage: provide your own start_date, initial_shares, and initial_btc
     # simulation_results = run_complete_simulation("2024-04-01", "2030-12-31", 1234567, 100)
     simulation_results = run_complete_simulation()
+
 

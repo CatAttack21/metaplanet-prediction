@@ -31,15 +31,15 @@ def get_metaplanet_3350_data():
 def get_bitcoin_historical_data():
     """Pulls Bitcoin price and volume data since 2012"""
     ticker = "BTC-USD"
-    start_date = "2025-05-23"  # One day before simulation start
+    start_date = "2025-05-28"  # One day before simulation start
     data = yf.download(ticker, start=start_date)
     return data[['Close', 'Volume']]
 
 def get_previous_day_btc():
     """Gets previous day's BTC closing price"""
     ticker = "BTC-USD"
-    end_date = "2025-05-24"  # Simulation start date
-    start_date = "2025-05-23"  # One day before
+    end_date = "2025-05-29"  # Simulation start date
+    start_date = "2025-05-28"  # One day before
     data = yf.download(ticker, start=start_date, end=end_date)
     return data['Close'].iloc[-1]
 
