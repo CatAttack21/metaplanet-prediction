@@ -400,21 +400,19 @@ def simulate_through_2040(btc_data, meta_3350_data, initial_shares, btc_holdings
         btc_value = current_btc * btc_price
         market_cap = btc_value * prev_mnav
         days_from_start = (date - sim_start).days
-        btc_purchased = 0.0  # Initialize at start of loop
         
-        # Check if it's time for weekly revenue
-        if (date - last_revenue_date).days >= 7:
-            # Calculate and apply weekly revenue with current date
-            weekly_revenue = calculate_weekly_revenue(market_cap, date)
-            revenue_btc = weekly_revenue / btc_price
-            current_btc += revenue_btc
-            last_revenue_date = date
-            simulation.loc[date, 'revenue_btc_purchased'] = revenue_btc
+        # Convert end_date to datetime if it's a string
+        if isinstance(end_date, str):
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
         else:
-            simulation.loc[date, 'revenue_btc_purchased'] = 0.0
-        
-        # Calculate mNAV using imported function
-        current_mnav = calculate_mnav_with_volatility(btc_value, days_from_start)
+            end_date_obj = end_date
+            
+        current_mnav = calculate_mnav_with_volatility(
+            btc_value, 
+            days_from_start,
+            end_date=end_date_obj,
+            current_date=date
+        )
         
         # Calculate base exponential decay volume
         days_elapsed = (date - sim_start).days
