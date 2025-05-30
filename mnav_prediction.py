@@ -36,7 +36,7 @@ def calculate_mnav_with_volatility(btc_value, days_from_start, base_volatility=0
     new_mnav = current_mnav + (target_mnav - current_mnav) * reversion_speed + noise
     
     # Apply minimum mNAV floor
-    min_mnav = power_law_mnav * 0.4
+    min_mnav = power_law_mnav * 0.7
     new_mnav = max(min_mnav, new_mnav)
     
     # Store for next calculation

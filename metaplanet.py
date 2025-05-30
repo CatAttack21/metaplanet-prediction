@@ -223,14 +223,20 @@ def calculate_preferred_dividend_reserve(current_date):
     # Reserve requirement (one quarter's worth)
     return quarterly_dividend
 
-def get_preferred_shares_count(current_date):
+def get_preferred_shares_count(current_date, end_date=None):
     """
     Gets the number of preferred shares outstanding using a single logistic growth S-curve.
     Uses sigmoid function to model natural adoption curve from 0 to 100M shares.
+    Args:
+        current_date: Current date to calculate shares for
+        end_date: End date of simulation for S-curve calculation (defaults to 2040-12-31)
     Returns: Integer number of shares
     """
     start_date = pd.Timestamp('2026-01-01')
-    end_date = pd.Timestamp('2030-12-31')
+    if end_date is None:
+        end_date = pd.Timestamp('2040-12-31')
+    else:
+        end_date = pd.Timestamp(end_date)
     max_shares = 500_000_000  # Maximum 500M shares
     
     if current_date < start_date:
@@ -277,8 +283,8 @@ def calculate_rolling_cagr(prices, window=365):
     rolling_cagr = rolling_cagr * 100
     return rolling_cagr
 
-def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings, start_date=None, end_date="2030-12-31"):
-    """Simulates Metaplanet metrics through 2030"""
+def simulate_through_2040(btc_data, meta_3350_data, initial_shares, btc_holdings, start_date=None, end_date="2040-12-31"):
+    """Simulates Metaplanet metrics through 2040"""
     # Use current date if no start date provided
     if start_date is None:
         start_date = "2025-05-24"
@@ -379,7 +385,7 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     last_revenue_date = sim_start - timedelta(days=1)  # Start counting from day 1
     
     # Add dividend tracking
-    simulation['preferred_shares'] = simulation.index.map(get_preferred_shares_count)
+    simulation['preferred_shares'] = simulation.index.map(lambda x: get_preferred_shares_count(x, end_date))
     simulation['dividend_reserve'] = 0.0
     simulation['quarterly_dividend'] = 0.0
     
@@ -674,13 +680,13 @@ def plot_simulation_results(simulation):
     ax9.set_ylabel('Shares Outstanding (Millions)')
     ax9.set_title('Shares Outstanding')
     ax9.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
-                 simulation['shares_outstanding'].max() * 1.05)
+                simulation['shares_outstanding'].max() * 1.05)
     ax9.yaxis.set_major_formatter(millions_formatter)
 
     # Daily BTC Purchased plot
     ax10 = fig.add_subplot(gs[4, 1])
     ax10.plot(simulation.index, simulation['btc_purchased'], 'r-', 
-              label='Daily BTC Purchased', linewidth=2)
+            label='Daily BTC Purchased', linewidth=2)
     ax10.set_ylabel('BTC Amount')
     ax10.set_title('Daily BTC Purchased from Dilution')
     ax10.set_ylim(0, simulation['btc_purchased'].max() * 1.05)
@@ -689,7 +695,7 @@ def plot_simulation_results(simulation):
     ax10b = fig.add_subplot(gs[5, 0])  # Place in left column
     daily_dilution = simulation['shares_outstanding'].diff().fillna(0)
     ax10b.plot(simulation.index, daily_dilution / 1e6, 'r-',  # Convert to millions
-              label='Daily Share Dilution', linewidth=2)
+            label='Daily Share Dilution', linewidth=2)
     ax10b.set_ylabel('Shares (Millions)')
     ax10b.set_title('Daily Share Dilution')
     ax10b.set_ylim(0, (daily_dilution / 1e6).max() * 1.05)
@@ -697,7 +703,7 @@ def plot_simulation_results(simulation):
     # Shift remaining plots down one position
     ax11 = fig.add_subplot(gs[5, 1])  # Preferred Shares (shifted)
     ax11.plot(simulation.index, simulation['preferred_shares'], 'purple', 
-             label='Preferred Shares', linewidth=2)
+            label='Preferred Shares', linewidth=2)
     ax11.set_ylabel('Number of Shares')
     ax11.set_title('Preferred Shares Outstanding')
     ax11.yaxis.set_major_formatter(millions_formatter)
@@ -705,7 +711,7 @@ def plot_simulation_results(simulation):
     ax12 = fig.add_subplot(gs[6, 0])  # Cumulative Dividends (shifted)
     cumulative_dividends = simulation['quarterly_dividend'].cumsum()
     ax12.plot(simulation.index, cumulative_dividends, 'purple', 
-             label='Cumulative Dividends', linewidth=2)
+            label='Cumulative Dividends', linewidth=2)
     ax12.set_ylabel('USD')
     ax12.set_title('Cumulative Preferred Share Dividends')
     if cumulative_dividends.max() > 1e6:
@@ -720,7 +726,7 @@ def plot_simulation_results(simulation):
     ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates] / 100  # Scale to hundreds
     
     ax13.plot(simulation.index[valid_dates], ratio, 'purple', 
-             label='Market Cap / Dividends (100x)', linewidth=2)
+            label='Market Cap / Dividends (100x)', linewidth=2)
     ax13.set_ylabel('Ratio (Hundreds)') 
     ax13.set_title('Market Cap to Cumulative Dividends Ratio')
     ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
@@ -740,11 +746,12 @@ def plot_simulation_results(simulation):
     plt.tight_layout()
     return fig
 
-def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", initial_shares=593210000, initial_btc=7800):
+def run_complete_simulation(start_date="2025-05-24", end_date="2040-12-31", initial_shares=593210000, initial_btc=7800):
     """
     Runs complete simulation and generates visualizations
     Default values:
-    - start_date: Current date (May 24th 2025)
+    - start_date: Current date (May 24th 2025) 
+    - end_date: December 31st 2040
     - 593.21M shares (current shares outstanding)
     - 7800 BTC (approximate current holdings)
     """
@@ -759,7 +766,7 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
     btc_holdings, _ = get_bitcoin_holdings()
     
     # Run simulation and get merged data
-    simulation = simulate_through_2030(
+    simulation = simulate_through_2040(
         btc_data, meta_3350_data, initial_shares, btc_holdings, 
         start_date=start_date, end_date=end_date
     )
@@ -767,18 +774,18 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
     # Create and save plots
     print("Generating plots...")
     fig = plot_simulation_results(simulation)
-    fig.savefig('metaplanet_simulation_2030.png', dpi=300, bbox_inches='tight')
+    fig.savefig('metaplanet_simulation_2040.png', dpi=300, bbox_inches='tight')
     plt.close()
     
     # Save numerical results
-    simulation.to_csv('metaplanet_simulation_2030.csv')
+    simulation.to_csv('metaplanet_simulation_2040.csv')
     
     # Generate and save yearly metrics
     yearly_metrics = generate_yearly_metrics(simulation)
-    yearly_metrics.to_csv('metaplanet_yearly_metrics.csv')
+    yearly_metrics.to_csv('metaplanet_yearly_metrics_2040.csv')
     
     # Create formatted text output
-    with open('metaplanet_yearly_summary.txt', 'w') as f:
+    with open('metaplanet_yearly_summary_2040.txt', 'w') as f:
         f.write("Metaplanet Yearly Key Metrics\n")
         f.write("============================\n\n")
         for year in yearly_metrics.index:
@@ -795,7 +802,7 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
             f.write("----------------------------\n\n")
     
     # Print summary statistics
-    print("\nSimulation Results for 2030:")
+    print("\nSimulation Results for 2040:")
     print(f"Final Bitcoin Price: ${simulation['btc_price'].iloc[-1]:,.2f}")
     print(f"Final Stock Price: ${simulation['stock_price'].iloc[-1]:,.2f}")
     print(f"Final BTC Holdings: {simulation['btc_holdings'].iloc[-1]:,.2f} BTC")

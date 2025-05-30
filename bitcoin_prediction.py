@@ -17,7 +17,7 @@ def btc_power_law_formula(index):
     price = base * (days_since_genesis ** exponent)
     
     # Apply exponential growth factor for far future dates
-    future_boost = np.exp(days_since_genesis / 5000)  # Gradual exponential boost
+    future_boost = np.exp(days_since_genesis / 3000)  # Gradual exponential boost
     price = price * future_boost
     
     support = 0.7 * price  # Tighter support
