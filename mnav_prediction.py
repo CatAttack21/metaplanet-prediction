@@ -8,7 +8,7 @@ def calculate_mnav_with_volatility(btc_value, days_from_start, base_volatility=0
     Returns: Float with calculated mNAV value including volatility
     """
     # Calculate power law baseline (theoretical fair value)
-    theoretical_mcap = 1.0 + 35.1221 * (btc_value ** 0.89)
+    theoretical_mcap = 1.0 + 35.1221 * (btc_value ** 0.895)
     power_law_mnav = theoretical_mcap / btc_value
 
     # Add random overshooting for mean reversion targets

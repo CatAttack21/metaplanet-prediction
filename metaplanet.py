@@ -348,8 +348,8 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     prev_stock_price = float(meta_3350_data['Close'].iloc[-1] if not meta_3350_data.empty else 5.0)
     
     # Initialize mNAV based on both models
-    initial_btc_nav = current_btc * simulation['btc_price'].iloc[0]  # Use iloc instead of direct indexing
-    theoretical_mcap = 35.1221 * (initial_btc_nav ** 0.89)  # Power law model
+    initial_btc_nav = current_btc * simulation['btc_price'].iloc[0]
+    theoretical_mcap = 42.5221 * (initial_btc_nav ** 0.92)  # Increased power law relationship
     initial_mnav = theoretical_mcap / initial_btc_nav
     prev_mnav = initial_mnav
     
