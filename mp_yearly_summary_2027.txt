@@ -1,0 +1,35 @@
+MP Yearly Key Metrics
+============================
+
+Year: 2025
+BTC Price: $136,299.73
+Stock Price: $9.19
+BTC Holdings: 33,034.30
+Shares Outstanding: 930,681,932
+mNAV: 1.9367
+Market Cap: $14,779,231,354.64
+BTC per 1000 Shares: 0.0355
+----------------------------
+
+Year: 2026
+BTC Price: $212,778.08
+Stock Price: $19.18
+BTC Holdings: 83,337.45
+Shares Outstanding: 1,572,069,627
+mNAV: 1.7010
+Market Cap: $58,284,427,514.59
+BTC per 1000 Shares: 0.0530
+Market Cap to Dividends Ratio: 5,932.3x
+----------------------------
+
+Year: 2027
+BTC Price: $269,302.45
+Stock Price: $33.87
+BTC Holdings: 217,442.84
+Shares Outstanding: 2,763,011,956
+mNAV: 1.6070
+Market Cap: $192,500,146,595.07
+BTC per 1000 Shares: 0.0787
+Market Cap to Dividends Ratio: 7,363.9x
+----------------------------
+

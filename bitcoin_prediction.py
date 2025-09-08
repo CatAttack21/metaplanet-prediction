@@ -13,8 +13,8 @@ def btc_power_law_formula(index):
     genesis = pd.Timestamp('2009-01-03')
     days_since_genesis = (index - genesis).days.values.astype(float)
     days_since_genesis[days_since_genesis < 1] = 1
-    price = 10**-17 * (days_since_genesis ** 5.8)
-    support = 0.5 * price
+    price = 10**-15 * (days_since_genesis ** 6.5)
+    support = 0.63 * price
     resistance = 4.0 * price
     return support, price, resistance
 

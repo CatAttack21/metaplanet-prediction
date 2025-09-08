@@ -1,10 +1,10 @@
-# metaplanet-prediction
-Metaplanet metric prediction
+# mp-simulation
+Mataplanet Bitcoin strategy simulation
 
 ## Bitcoin Price
 
-- Follow the Bitcoin Power law, price = 10**-17 * (days_since_genesis ** 5.8)
-- Support at 0.5x, Resistance at 4x
+- Follow the Bitcoin Power law, price = 10**-15 * (days_since_genesis ** 6.2)
+- Support at 0.63x, Resistance at 4x
 - Superimpose 8 sinusoid functions over varying frequency/amplitude for price action
 
 ## Bitcoin CAGR
@@ -15,8 +15,8 @@ Metaplanet metric prediction
 
 ## Bitcoin Holdings
 
-- Derived from 7800 + purchases
-- Moving Strike Warrants = BTC
+- Derived from purchases
+- ATM = BTC
 - Bitcoin puts revenue (0.5% market cap annually, cash on hand to sell puts) = BTC
 - Preferred Shares = BTC
 
@@ -26,14 +26,11 @@ Metaplanet metric prediction
 
 ## mNAV
 
-- Follows a power law, as described by Metaplanet presentations, theoretical_mcap = 35.1221 * (btc_value ** 0.89)
-https://aqsmixvnbavrufgttwsn.supabase.co/storage/v1/object/public/media-resources/en/67fa9191-0efa-467e-8996-71a68ab3a62f/q1-2025-earnings-presentation-20250514T192554478Z.pdf
-
-- 15% chance of any overshoot/undershoot (equal weight)
-- Upside random overshoot between 33% and 400%
-- Downside random overshoot between -50% and -20%
-- Sinusoidal volatility based on random noise
-- Mean reversion strength between 5% and 15%
+- Oscillating cycles between 0.8 and decaying peaks over 1-3 month periods
+- 3-zone distribution: 5% discount (0.8-1.3), 30% moderate (1.3-2.5), 65% high premium (2.5-decaying max)
+- Decaying power law for peaks: max_mnav = 7.0 * (time_in_years + 1)^(-0.15)
+- mNAV is dampened by dilution rate: for each 1% dilution, mNAV is reduced by 2%
+- Multiple overlapping sine wave cycles (45-day, 180-day, 360-day periods)
 
 ## Stock Price
 
@@ -50,18 +47,20 @@ https://aqsmixvnbavrufgttwsn.supabase.co/storage/v1/object/public/media-resource
 
 ## Daily Trading Volume
 
-- Takes the initial 3350 volume and normalizes the median to 10% of outstanding shares (Mimics MSTR performance through 2025)
-- Weekly Volume factor between 20%-100%
-- Apply a factor of mNAV to boost during high mNAV
-- Add a component of random volatility noise, this dominates at low volume
-- Bound final between 1% and 33% of outstanding shares
+- Volume correlated to mNAV cyclical model (higher mNAV = higher volume)
+- Range: 2% to 10% of outstanding shares
+- Low mNAV (≤1.0): 2.0%-3.0% volume
+- Moderate mNAV (1.0-2.0): 3.0%-5.0% volume  
+- High mNAV (>2.0): 5.0%-10.0% volume
+- Small daily random noise (±5%)
 
 ## Daily Share Dilution
 
-- Dilution occurs only if the stock price increases
-- Dilution only occurs 1x every 3 days
-- Dilution only occurs on TSE trading days (weekdays)
-- Dilution Decay models that starts at 10% of daily volume and drops to 2%
+- Simplified dilution logic: 20% of daily trading volume when price increases from the previous day
+- Dilution occurs only if mNAV (market cap to NAV ratio) is above 1.1
+- Dilution only occurs on trading days (weekdays)
+- Dilution rate tracked and used to dampen future mNAV (1% dilution = 2% mNAV reduction)
+- Rate decays exponentially when no dilution occurs (5% decay per day)
 
 ## Preferred Shares
 

@@ -7,7 +7,7 @@ from matplotlib.gridspec import GridSpec
 from bitcoin_prediction import predict_bitcoin_prices
 from mnav_prediction import calculate_mnav_with_volatility
 from data_sources import (
-    get_metaplanet_3350_data,
+    get_metaplanet_data,
     get_bitcoin_historical_data,
     get_previous_day_btc,
     get_historical_bitcoin_data_for_cagr
@@ -57,6 +57,59 @@ def calculate_mnav(market_cap, btc_holdings, btc_price):
     btc_value = btc_holdings * btc_price
     return market_cap / btc_value
 
+def calculate_mnav_correlated_volume(current_mnav, base_volume_pct=0.06, min_volume_pct=0.02, max_volume_pct=0.10):
+    """
+    Calculates volume percentage correlated to mNAV cyclical model
+    Higher mNAV = Higher volume (more interest/activity)
+    Range: 2% to 10% of shares outstanding
+    Args:
+        current_mnav: Current mNAV value
+        base_volume_pct: Base volume percentage at mNAV = 1.5 (6%)
+        min_volume_pct: Minimum volume percentage (2%)
+        max_volume_pct: Maximum volume percentage (10%)
+    Returns: Volume percentage correlated to mNAV
+    """
+    # Normalize mNAV to a correlation factor
+    # mNAV 0.8-1.3: Low volume (discount/fair value)
+    # mNAV 1.3-2.5: Moderate volume (moderate premium)  
+    # mNAV 2.5+: High volume (high premium/speculation)
+    
+    if current_mnav <= 1.0:
+        # Below fair value: low volume (2.0% to 3.0%)
+        volume_factor = 0.33 + 0.17 * current_mnav  # 0.33 to 0.50 multiplier
+    elif current_mnav <= 2.0:
+        # Fair to moderate premium: normal volume (3.0% to 5.0%)
+        volume_factor = 0.50 + 0.33 * (current_mnav - 1.0)  # 0.50 to 0.83 multiplier
+    else:
+        # High premium: high volume with diminishing returns (5.0% to 10.0%)
+        excess_mnav = current_mnav - 2.0
+        volume_factor = 0.83 + 0.84 * np.log(1 + excess_mnav) / np.log(4)  # Scaled log growth
+    
+    # Apply volume factor to base percentage
+    correlated_volume_pct = base_volume_pct * volume_factor
+    
+    # Ensure bounds (2% to 10%)
+    return max(min_volume_pct, min(max_volume_pct, correlated_volume_pct))
+
+def calculate_volume_dampening_factor(days_from_start, initial_shares, current_shares):
+    """
+    Calculates a dampening factor to slow down volume growth as share count increases
+    Returns: Float between 0.1 and 1.0 to reduce effective volume percentage
+    """
+    # Calculate share count growth ratio
+    share_growth_ratio = current_shares / initial_shares
+    
+    # Time-based dampening: reduces volume growth over time
+    time_dampening = np.exp(-0.5 * days_from_start / 365.25)  # Decay over years
+    
+    # Share-count-based dampening: reduces as shares grow
+    # More shares = lower volume percentage to prevent infinite growth
+    share_dampening = 1.0 / np.sqrt(share_growth_ratio)  # Square root dampening
+    
+    # Combine both factors with minimum floor of 0.1
+    combined_dampening = time_dampening * share_dampening
+    return max(0.1, min(1.0, combined_dampening))
+
 def predict_future_mnav(days_from_start, btc_value):
     """
     Predicts future mNAV using the Weierstrass volatility model
@@ -95,35 +148,35 @@ def calculate_stock_price(predicted_mnav, btc_holdings, current_shares, btc_pric
     """
     return (btc_holdings * btc_price * predicted_mnav) / current_shares
 
-def calculate_daily_dilution(price_data, volume_data):
+def calculate_daily_dilution(price_data, volume_data, days_since_last=0, dilution_rate=0.20, current_mnav=1.0):
     """
-    Calculates daily dilution and funds raised with linearly decreasing percentage
+    Calculates daily dilution and funds raised with simplified logic:
+    - Dilute 20% of daily volume when price increases from previous day
+    - Only dilute if mNAV is above 1.1
+    Volume should be daily trading volume, not outstanding shares
     Returns: DataFrame with dilution amount and funds raised
     """
-    daily_returns = price_data.pct_change()
+    # For single day calculations, compare with previous day's price
+    if len(price_data) == 1:
+        # Default to no dilution if no previous price
+        price_increase = 0.0
+        if hasattr(price_data.index[0], 'strftime'):
+            prev_day = price_data.index[0] - pd.Timedelta(days=1)
+            if prev_day in price_data.index:
+                price_increase = (price_data.iloc[0] / price_data.loc[prev_day]) - 1
+    else:
+        price_increase = price_data.pct_change().iloc[-1]
+    
     dilution = pd.DataFrame(index=price_data.index)
     dilution['dilution_shares'] = 0.0
     dilution['funds_raised'] = 0.0
     
-    # Calculate total days and days elapsed for linear decrease
-    start_date = pd.Timestamp('2025-05-24')
-    end_date = pd.Timestamp('2030-12-31')
-    total_days = (end_date - start_date).days
-    
-    # Process each date
-    for date in dilution.index:
-        if daily_returns.loc[date] > 0.03:  # 3% price increase threshold
-            days_elapsed = (date - start_date).days
-            # Linear decrease from 5% to 1%
-            if date < start_date:
-                dilution_pct = 0.1  # Start at 5%
-            elif date > end_date:
-                dilution_pct = 0.02  # End at 1%
-            else:
-                dilution_pct = 0.05 - (0.04 * (days_elapsed / total_days))  # Linear decrease
-                
-            dilution.loc[date, 'dilution_shares'] = volume_data.loc[date] * dilution_pct
-            dilution.loc[date, 'funds_raised'] = dilution.loc[date, 'dilution_shares'] * price_data.loc[date]
+    date = price_data.index[-1]
+    # Simple rule: dilute 20% of daily volume when price increases from previous day AND mNAV > 1.1
+    if price_increase > 0.03 and current_mnav > 1.1:
+        # Calculate dilution as 20% of daily trading volume
+        dilution.loc[date, 'dilution_shares'] = volume_data.loc[date] * 0.15
+        dilution.loc[date, 'funds_raised'] = dilution.loc[date, 'dilution_shares'] * price_data.loc[date]
     
     return dilution
 
@@ -233,21 +286,21 @@ def get_preferred_shares_count(current_date):
     """
     start_date = pd.Timestamp('2026-01-01')
     end_date = pd.Timestamp('2030-12-31')
-    max_shares = 100_000_000  # Maximum 100M shares
-    
+    max_shares = 10_000_000  # Maximum 10M shares
+
     if current_date < start_date:
         return 0
         
     days_from_start = (current_date - start_date).days
     total_days = (end_date - start_date).days
     
-    # Normalized time from -6 to 6 for smooth sigmoid curve
+    # Normalized time from -3 to 3 for smooth sigmoid curve
     # This gives us the classic S-curve shape
-    normalized_time = 12 * (days_from_start / total_days - 0.5)
+    normalized_time = 6 * (days_from_start / total_days - 0.5)
     
     # Sigmoid function: 1 / (1 + e^-x)
     # This creates the S-curve shape
-    progress = 1 / (1 + np.exp(-normalized_time))
+    progress = 2 / (1 + np.exp(-normalized_time))
     
     # Calculate shares based on progress
     shares = max_shares * progress
@@ -279,8 +332,8 @@ def calculate_rolling_cagr(prices, window=365):
     rolling_cagr = rolling_cagr * 100
     return rolling_cagr
 
-def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings, start_date=None, end_date="2030-12-31"):
-    """Simulates Metaplanet metrics through 2030"""
+def simulate_through_2040(btc_data, meta_3350_data, initial_shares, btc_holdings, start_date=None, end_date="2040-12-31", enable_preferred_shares=True):
+    """Simulates Metaplanet metrics through 2040"""
     # Use current date if no start date provided
     if start_date is None:
         start_date = "2025-05-24"
@@ -308,7 +361,7 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     simulation['is_trading_day'] = simulation.index.map(is_tse_trading_day)
     simulation['btc_holdings'] = initial_btc
     simulation['btc_price'] = last_btc_price  # Initialize with last known price
-    
+
     # Initialize starting values with actual market data
     prev_stock_price = market_cap / initial_shares
     prev_mnav = initial_mnav
@@ -317,18 +370,14 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     current_btc = initial_btc  # Start with historical final value
     current_shares = float(initial_shares)
     cumulative_btc_purchased = 0.0  # Track only new purchases
-    min_dilution_interval = 3  # Days between dilution events
 
-    # Calculate S-curve dilution parameters
-    peak_annual_rate = 1.0  # 100% dilution at peak
-    end_annual_rate = 0.33  # 33% dilution by 2030 (changed from 0.10)
+    # Calculate total simulation days (still needed for other calculations)
     total_days = (sim_end - sim_start).days
-    steepness = 6.0 / total_days  # Controls S-curve steepness
+
+    # Simplified dilution: 20% of daily volume when price increases
+    # No complex parameters needed anymore
     
-    def get_dilution_rate(days_from_start):
-        """Calculate dilution rate using logistic decay function"""
-        # Start at peak and decay to end rate
-        return end_annual_rate + (peak_annual_rate - end_annual_rate) / (1 + np.exp(steepness * days_from_start))
+    # Removed complex get_dilution_rate function - now using simple 20% rule
 
     # Add historical BTC prices where available
     historical_data = btc_data.reindex(future_dates)
@@ -357,11 +406,14 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     
     # Get historical trading volume data
     if not meta_3350_data.empty and 'Volume' in meta_3350_data.columns:
-        # Calculate initial volume as percentage of shares
-        initial_volume_pct = meta_3350_data['Volume'].iloc[0] / initial_shares
-        initial_volume_pct = min(0.33, max(0.05, initial_volume_pct))  # Bound between 5-33%
+        # Get last 30 days of volume data
+        recent_volume = meta_3350_data['Volume'].tail(30)
+        # Calculate average daily volume as percentage of shares
+        initial_volume_pct = recent_volume.median() / initial_shares
+        # Keep volume stable around 6.5% with minimal variation
+        initial_volume_pct = max(0.0635, min(0.0665, initial_volume_pct))
     else:
-        initial_volume_pct = 0.20  # Default to 20% initial volume
+        initial_volume_pct = 0.065  # Default to exactly 6.5% initial volume
     
     # Configure exponential decay parameters
     decay_rate = -np.log(0.1) / total_days  # Decay to achieve 10% asymptote
@@ -384,6 +436,9 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
     
     # Track last dividend date
     last_dividend_date = pd.Timestamp('2026-01-01') - pd.Timedelta(days=1)
+        
+    # Store previous day's price for dilution calculation
+    prev_prices = pd.Series(index=simulation.index)
     
     for date in simulation.index:
         btc_price = simulation.loc[date, 'btc_price']
@@ -391,76 +446,84 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         market_cap = btc_value * prev_mnav
         days_from_start = (date - sim_start).days
         
-        # Check if it's time for weekly revenue
-        if (date - last_revenue_date).days >= 7:
-            # Calculate and apply weekly revenue with current date
-            weekly_revenue = calculate_weekly_revenue(market_cap, date)
-            revenue_btc = weekly_revenue / btc_price
-            current_btc += revenue_btc
-            last_revenue_date = date
-            simulation.loc[date, 'revenue_btc_purchased'] = revenue_btc
+        # Convert end_date to datetime if it's a string
+        if isinstance(end_date, str):
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
         else:
-            simulation.loc[date, 'revenue_btc_purchased'] = 0.0
+            end_date_obj = end_date
         
-        # Calculate mNAV using imported function
-        current_mnav = calculate_mnav_with_volatility(btc_value, days_from_start)
+        # Calculate current dilution rate for mNAV dampening
+        # Get the last dilution rate from recent activity
+        current_dilution_rate_pct = getattr(simulate_through_2040, 'last_dilution_rate_pct', 0.0)
+            
+        current_mnav = calculate_mnav_with_volatility(
+            btc_value, 
+            days_from_start,
+            end_date=end_date_obj,
+            current_date=date,
+            dilution_rate_pct=current_dilution_rate_pct
+        )
         
-        # Calculate base exponential decay volume
-        days_elapsed = (date - sim_start).days
-        decay_factor = np.exp(-decay_rate * days_elapsed)
+        # Calculate mNAV-correlated volume instead of fixed percentage
+        mnav_correlated_volume_pct = calculate_mnav_correlated_volume(current_mnav)
         
-        # Calculate volume percentage that decays from initial to 10% asymptote
-        volume_pct = 0.10 + (initial_volume_pct - 0.10) * decay_factor
+        # Add small random noise for daily variation
+        vol_noise = np.random.normal(1.0, 0.05)  # 5% daily noise
+        final_volume_pct = mnav_correlated_volume_pct * max(0.9, min(1.1, vol_noise))
         
-        # Add weekly cycle pattern
-        days_in_week = (days_in_week + 1) % 5
-        if days_in_week == 0:  # Reset weekly factor
-            weekly_volume_factor = np.random.normal(1.0, 0.2)
-        
-        # Apply mNAV influence and weekly pattern
-        mnav_factor = 1.0 + 0.5 * (current_mnav - 1.0) if current_mnav > 1 else 1.0 / (1.0 + 0.5 * (1.0 - current_mnav))
-        final_volume_pct = volume_pct * mnav_factor * weekly_volume_factor
-        
-        # Add random noise with increasing volatility at lower volumes
-        vol_noise = np.random.normal(1.0, base_volatility * (1.0 + (0.10 / volume_pct)))
-        final_volume_pct *= max(0.1, min(3.0, vol_noise))
-        
-        # Ensure volume stays within bounds
-        final_volume_pct = min(0.33, max(0.01, final_volume_pct))
         daily_volume = current_shares * final_volume_pct
 
         # Only update stock price and apply dilution on trading days
         if simulation.loc[date, 'is_trading_day']:
-            # Replace manual calculation with calculate_stock_price function
             stock_price = calculate_stock_price(current_mnav, current_btc, current_shares, btc_price)
+            prev_prices[date] = stock_price
             
             if date >= sim_start:
-                days_since_dilution += 1
-                price_increase = (stock_price / prev_stock_price - 1) if prev_stock_price > 0 else 0
-                btc_purchased = 0.0
+                # Get current dilution rate from S-curve
+                # Simplified dilution logic: 20% of daily volume when price increases
+                # Create price series with previous day's price for proper return calculation
+                price_series = pd.Series({
+                    date - pd.Timedelta(days=1): prev_prices.loc[:date].dropna().iloc[-2] if len(prev_prices.loc[:date].dropna()) > 1 else stock_price * 0.99,
+                    date: stock_price
+                })
                 
-                if days_since_dilution >= min_dilution_interval and stock_price >= prev_stock_price:
-                    # Get current target annual dilution rate from S-curve
-                    current_annual_rate = get_dilution_rate(days_from_start)
-                    daily_dilution_target = (1 + current_annual_rate) ** (1/365) - 1
-                    target_new_shares = current_shares * daily_dilution_target * min_dilution_interval
+                # Calculate dilution using simplified logic (20% of daily trading volume, only if mNAV > 1.1)
+                daily_dilution = calculate_daily_dilution(
+                    price_series,
+                    pd.Series({date: daily_volume}),
+                    days_since_dilution,
+                    0.20,  # Fixed 20% rate
+                    current_mnav  # Pass current mNAV to check threshold
+                )
+                
+                if not daily_dilution.empty and daily_dilution.loc[date, 'dilution_shares'] > 0:
+                    new_shares = daily_dilution.loc[date, 'dilution_shares']
+                    funds_raised = daily_dilution.loc[date, 'funds_raised']
+                    btc_purchased = funds_raised / btc_price
                     
-                    # Use volume as a limiter - max 10% of daily volume
-                    volume_limit = daily_volume * 0.10
-                    new_shares = min(target_new_shares, volume_limit)
+                    # Calculate dilution rate as percentage of outstanding shares
+                    dilution_rate_pct = (new_shares / current_shares) * 100
                     
-                    # Calculate BTC purchases based on raised funds
-                    funds_raised = new_shares * stock_price
-                    btc_purchased = funds_raised / btc_price  # No artificial limit
+                    # Store dilution rate for mNAV dampening (with decay)
+                    previous_rate = getattr(simulate_through_2040, 'last_dilution_rate_pct', 0.0)
+                    # Use exponential decay: new rate has 70% weight, previous 30%
+                    simulate_through_2040.last_dilution_rate_pct = 0.7 * dilution_rate_pct + 0.3 * previous_rate
                     
                     # Apply dilution
                     current_shares += new_shares
                     current_btc += btc_purchased
                     cumulative_btc_purchased += btc_purchased
-                    days_since_dilution = 0
+                    days_since_dilution = 0  # Reset the counter
+                else:
+                    days_since_dilution += 1
+                    btc_purchased = 0.0  # Explicit zero when no dilution occurs
+                    
+                    # Decay the dilution rate when no dilution occurs
+                    previous_rate = getattr(simulate_through_2040, 'last_dilution_rate_pct', 0.0)
+                    simulate_through_2040.last_dilution_rate_pct = previous_rate * 0.95  # 5% decay per day
                 
                 # Check for quarterly dividend and preferred share revenue
-                if date >= pd.Timestamp('2026-01-01'):
+                if date >= pd.Timestamp('2026-01-01') and enable_preferred_shares:
                     # Handle preferred share sales revenue
                     pref_revenue, dividend_reserve = calculate_preferred_shares_revenue(market_cap, date)
                     if pref_revenue > 0:
@@ -486,7 +549,7 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
                 prev_stock_price = stock_price
         else:
             stock_price = prev_stock_price if prev_stock_price is not None else 5.0
-            simulation.loc[date, 'btc_purchased'] = 0.0
+            btc_purchased = 0.0  # Explicit zero on non-trading days
         
         # Store simulation results
         simulation.loc[date, 'stock_price'] = stock_price
@@ -495,12 +558,14 @@ def simulate_through_2030(btc_data, meta_3350_data, initial_shares, btc_holdings
         simulation.loc[date, 'btc_holdings'] = current_btc
         simulation.loc[date, 'mnav'] = current_mnav
         simulation.loc[date, 'market_cap'] = market_cap
+        simulation.loc[date, 'btc_purchased'] = btc_purchased  # Now always defined
         simulation.loc[date, 'weekly_revenue'] = calculate_weekly_revenue(market_cap) if (date - last_revenue_date).days >= 7 else 0.0
 
     # Forward fill any missing values in final results
     simulation = simulation.ffill()  # Use ffill() instead of fillna(method='ffill')
     
     return simulation
+
 
 def generate_yearly_metrics(simulation):
     """
@@ -545,7 +610,7 @@ def generate_yearly_metrics(simulation):
     
     return yearly_metrics
 
-def plot_simulation_results(simulation):
+def plot_simulation_results(simulation, enable_preferred_shares=True):
     """Plot simulation results with aligned axes"""
     # Read historical BTC holdings
     historical_df = pd.read_csv('mp_btc.csv')
@@ -577,14 +642,19 @@ def plot_simulation_results(simulation):
     simulation['btc_holdings'] = complete_holdings[simulation.index]
     
     # Create figure with standard subplot grid
-    fig = plt.figure(figsize=(15, 28))  # Reduced height since we're removing empty space
-    gs = GridSpec(7, 2, figure=fig)  # 7 rows now instead of 8
+    fig = plt.figure(figsize=(15, 36))  # Increased height for new plot
+    gs = GridSpec(10, 2, figure=fig)  # Changed from 9 to 10 rows
 
     def format_millions(x, pos):
         """Format large numbers in millions"""
         return f'{x/1e6:.1f}M'
 
+    def format_thousands(x, pos):
+        """Format large numbers in thousands"""
+        return f'{x/1e3:.1f}K'
+
     millions_formatter = plt.FuncFormatter(format_millions)
+    thousands_formatter = plt.FuncFormatter(format_thousands)
     
     # Left Column (Bitcoin metrics)
     ax1 = fig.add_subplot(gs[0, 0])  # Bitcoin Price
@@ -614,10 +684,10 @@ def plot_simulation_results(simulation):
 
     ax3 = fig.add_subplot(gs[2, 0])  # Bitcoin Holdings
     ax3.plot(complete_holdings.index, complete_holdings.values, 'b-', label='BTC Holdings', linewidth=2)
-    ax3.set_ylabel('BTC Holdings (Millions)')
+    ax3.set_ylabel('BTC Holdings (Thousands)')
     ax3.set_title('Bitcoin Holdings')
     ax3.set_ylim(0, complete_holdings.max() * 1.05)
-    ax3.yaxis.set_major_formatter(millions_formatter)  # Add millions formatter
+    ax3.yaxis.set_major_formatter(thousands_formatter)  # Changed to thousands formatter
     
     ax4 = fig.add_subplot(gs[3, 0])  # BTC per 1000 shares
     btc_per_1000 = (simulation['btc_holdings'] / simulation['shares_outstanding']) * 1000
@@ -637,7 +707,7 @@ def plot_simulation_results(simulation):
     ax6 = fig.add_subplot(gs[0, 1])  # Stock Price
     ax6.plot(simulation.index, simulation['stock_price'], 'g-', label='Stock Price', linewidth=2)
     ax6.set_ylabel('Stock Price (USD)')
-    ax6.set_title('Metaplanet Stock Price')
+    ax6.set_title('MP Stock Price')
     ax6.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
     
     ax7 = fig.add_subplot(gs[1, 1])  # mNAV
@@ -660,55 +730,94 @@ def plot_simulation_results(simulation):
     ax9.set_ylabel('Shares Outstanding (Millions)')
     ax9.set_title('Shares Outstanding')
     ax9.set_ylim(simulation['shares_outstanding'].min() * 0.95, 
-                 simulation['shares_outstanding'].max() * 1.05)
+                simulation['shares_outstanding'].max() * 1.05)
     ax9.yaxis.set_major_formatter(millions_formatter)
 
-    # Shift these plots up one position each
-    ax10 = fig.add_subplot(gs[4, 1])  # Daily Share Dilution (moved from 5,1)
-    model2_dilution = calculate_daily_dilution(simulation['stock_price'], simulation['volume'])
-    ax10.plot(simulation.index, model2_dilution['dilution_shares'], 'r-', 
-              label='Daily Share Dilution', linewidth=2)
-    ax10.set_ylabel('Shares Issued')
-    ax10.set_title('Daily Share Dilution')
-    ax10.set_ylim(0, model2_dilution['dilution_shares'].max() * 1.05)
-    if model2_dilution['dilution_shares'].max() > 1e6:
-        ax10.yaxis.set_major_formatter(millions_formatter)
-    
-    # Shift preferred shares plots up one position
-    ax11 = fig.add_subplot(gs[5, 0])  # Preferred Shares Outstanding (moved from 6,0)
-    ax11.plot(simulation.index, simulation['preferred_shares'], 'purple', 
-             label='Preferred Shares', linewidth=2)
-    ax11.set_ylabel('Number of Shares')
-    ax11.set_title('Preferred Shares Outstanding')
-    ax11.yaxis.set_major_formatter(millions_formatter)
-    
-    ax12 = fig.add_subplot(gs[5, 1])  # Cumulative Preferred Dividends (moved from 6,1)
-    cumulative_dividends = simulation['quarterly_dividend'].cumsum()
-    ax12.plot(simulation.index, cumulative_dividends, 'purple', 
-             label='Cumulative Dividends', linewidth=2)
-    ax12.set_ylabel('USD')
-    ax12.set_title('Cumulative Preferred Share Dividends')
-    if cumulative_dividends.max() > 1e6:
-        ax12.yaxis.set_major_formatter(millions_formatter)
+    # Daily BTC Purchased plot
+    ax10 = fig.add_subplot(gs[4, 1])
+    ax10.plot(simulation.index, simulation['btc_purchased'], 'r-', 
+            label='Daily BTC Purchased', linewidth=2)
+    ax10.set_ylabel('BTC Amount')
+    ax10.set_title('Daily BTC Purchased from Dilution')
+    ax10.set_ylim(0, simulation['btc_purchased'].max() * 1.05)
 
-    # Add Market Cap to Cumulative Dividends Ratio plot
-    ax13 = fig.add_subplot(gs[6, :])  # Market Cap Ratio (moved from 7,:)
+    # Add new Daily Share Dilution plot
+    ax10b = fig.add_subplot(gs[5, 0])  # Place in left column
+    daily_dilution = simulation['shares_outstanding'].diff().fillna(0)
+    ax10b.plot(simulation.index, daily_dilution / 1e6, 'r-',  # Convert to millions
+            label='Daily Share Dilution', linewidth=2)
+    ax10b.set_ylabel('Shares (Millions)')
+    ax10b.set_title('Daily Share Dilution')
+    ax10b.set_ylim(0, (daily_dilution / 1e6).max() * 1.05)
     
-    # Calculate cumulative dividends and ratio
-    cumulative_dividends = simulation['quarterly_dividend'].fillna(0).cumsum()
-    # Only calculate ratio where cumulative dividends > 0
-    valid_dates = cumulative_dividends > 0
-    ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates]
-    
-    ax13.plot(simulation.index[valid_dates], ratio, 'purple', 
-             label='Market Cap / Cumulative Dividends', linewidth=2)
-    ax13.set_ylabel('Ratio') 
-    ax13.set_title('Market Cap to Cumulative Dividends Ratio')
-    ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
-    ax13.set_ylim(0, 5000)  # Set fixed y-axis range
-    
+    # Shift remaining plots down one position
+    if enable_preferred_shares:
+        ax11 = fig.add_subplot(gs[5, 1])  # Preferred Shares (shifted)
+        ax11.plot(simulation.index, simulation['preferred_shares'], 'purple', 
+                label='Preferred Shares', linewidth=2)
+        ax11.set_ylabel('Number of Shares')
+        ax11.set_title('Preferred Shares Outstanding')
+        ax11.yaxis.set_major_formatter(millions_formatter)
+        
+        ax12 = fig.add_subplot(gs[6, 0])  # Cumulative Dividends (shifted)
+        cumulative_dividends = simulation['quarterly_dividend'].cumsum()
+        ax12.plot(simulation.index, cumulative_dividends, 'purple', 
+                label='Cumulative Dividends', linewidth=2)
+        ax12.set_ylabel('USD')
+        ax12.set_title('Cumulative Preferred Share Dividends')
+        if cumulative_dividends.max() > 1e6:
+            ax12.yaxis.set_major_formatter(millions_formatter)
+
+    # Market Cap Ratio plot moved up to position 6
+    if enable_preferred_shares:
+        ax13 = fig.add_subplot(gs[6, 1])  # Changed from gs[7, 1] to gs[6, 1]
+        
+        # Calculate cumulative dividends and ratio, scale to hundreds
+        cumulative_dividends = simulation['quarterly_dividend'].fillna(0).cumsum()
+        valid_dates = cumulative_dividends > 0
+        ratio = simulation.loc[valid_dates, 'market_cap'] / cumulative_dividends[valid_dates] / 100  # Scale to hundreds
+        
+        ax13.plot(simulation.index[valid_dates], ratio, 'purple', 
+                label='Market Cap / Dividends (100x)', linewidth=2)
+        ax13.set_ylabel('Ratio (Hundreds)') 
+        ax13.set_title('Market Cap to Cumulative Dividends Ratio')
+        ax13.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: format(int(x), ',')))
+        
+        # Set y-axis limits based on data with 5% padding 
+        max_ratio = ratio.max()
+        ax13.set_ylim(0, max_ratio * 1.05)
+
+    # Add new Volume Percentage plot
+    ax14 = fig.add_subplot(gs[7, 0])  # Place in left column below dilution plot
+    volume_pct = (simulation['volume'] / simulation['shares_outstanding']) * 100
+    ax14.plot(simulation.index, volume_pct, 'r-', 
+            label='Volume % of Shares', linewidth=2)
+    ax14.set_ylabel('Volume %')
+    ax14.set_title('Daily Volume as % of Shares Outstanding')
+    ax14.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax14.set_ylim(0, volume_pct.max() * 1.05)
+
+    # Add Quarterly Dividend Payments plot
+    if enable_preferred_shares:
+        ax15 = fig.add_subplot(gs[7, 1])  # Place in right column
+        quarterly_dividends = simulation['quarterly_dividend']
+        ax15.bar(simulation.index[quarterly_dividends > 0], 
+                 quarterly_dividends[quarterly_dividends > 0], 
+                 width=30, color='purple',
+                 label='Quarterly Dividend')
+        ax15.set_ylabel('USD')
+        ax15.set_title('Quarterly Dividend Payments')
+        if quarterly_dividends.max() > 1e6:
+            ax15.yaxis.set_major_formatter(millions_formatter)
+
     # Common settings for all plots
-    for ax in [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12, ax13]:
+    base_plots = [ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax10b, ax14]
+    if enable_preferred_shares:
+        all_plots = base_plots + [ax11, ax12, ax13, ax15]
+    else:
+        all_plots = base_plots
+    
+    for ax in all_plots:
         ax.grid(True)
         ax.xaxis.set_major_formatter(date_formatter)
         ax.set_xlim(start_date, end_date)
@@ -718,46 +827,67 @@ def plot_simulation_results(simulation):
     plt.tight_layout()
     return fig
 
-def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", initial_shares=593210000, initial_btc=7800):
+def plot_three_year_results(simulation, enable_preferred_shares=True):
+    """Plot simulation results limited to first 3 years"""
+    # Create subset of data ending in 2028
+    end_2028 = pd.Timestamp('2028-12-31')
+    early_data = simulation[simulation.index <= end_2028].copy()
+    
+    # Use existing plot_simulation_results logic but with early_data
+    fig = plot_simulation_results(early_data, enable_preferred_shares)
+    fig.suptitle('Metaplanet 3-Year Estimate (2025-2028)', y=1.02, fontsize=16)
+    return fig
+
+def run_complete_simulation(start_date="2025-09-04", end_date="2026-12-31", initial_shares=751210000, initial_btc=20000, enable_preferred_shares=True):
     """
     Runs complete simulation and generates visualizations
     Default values:
-    - start_date: Current date (May 24th 2025)
+    - start_date: Current date (Sept 4th 2025) 
+    - end_date: December 31st 2027
     - 593.21M shares (current shares outstanding)
     - 7800 BTC (approximate current holdings)
+    - enable_preferred_shares: True to include preferred shares simulation
     """
     if start_date is None:
-        start_date = "2025-05-24"
+        start_date = "2025-09-04"
     
     print("Starting simulation...")
     
     # Get historical data
     btc_data = get_bitcoin_historical_data()
-    meta_3350_data = get_metaplanet_3350_data()
+    mp_data = get_metaplanet_data()
     btc_holdings, _ = get_bitcoin_holdings()
     
     # Run simulation and get merged data
-    simulation = simulate_through_2030(
-        btc_data, meta_3350_data, initial_shares, btc_holdings, 
-        start_date=start_date, end_date=end_date
+    simulation = simulate_through_2040(
+        btc_data, mp_data, initial_shares, btc_holdings, 
+        start_date=start_date, end_date=end_date, enable_preferred_shares=enable_preferred_shares
     )
     
-    # Create and save plots
+    # Create and save both plot sets
     print("Generating plots...")
-    fig = plot_simulation_results(simulation)
-    fig.savefig('metaplanet_simulation_2030.png', dpi=300, bbox_inches='tight')
+    
+    # Full simulation plots
+    fig_full = plot_simulation_results(simulation, enable_preferred_shares)
+    fig_full.suptitle('MP Full Simulation (2025-2027)', y=1.02, fontsize=16)
+    fig_full.savefig('mp_simulation_2027.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # Three year estimate plots
+    fig_early = plot_three_year_results(simulation, enable_preferred_shares)
+    fig_early.savefig('mp_simulation_2027.png', dpi=300, bbox_inches='tight')
     plt.close()
     
     # Save numerical results
-    simulation.to_csv('metaplanet_simulation_2030.csv')
+    simulation.to_csv('mp_simulation_2027.csv')
     
     # Generate and save yearly metrics
     yearly_metrics = generate_yearly_metrics(simulation)
-    yearly_metrics.to_csv('metaplanet_yearly_metrics.csv')
-    
+    yearly_metrics.to_csv('mp_yearly_metrics_2027.csv')
+
     # Create formatted text output
-    with open('metaplanet_yearly_summary.txt', 'w') as f:
-        f.write("Metaplanet Yearly Key Metrics\n")
+    with open('mp_yearly_summary_2027.txt', 'w') as f:
+        f.write("MP Yearly Key Metrics\n")
         f.write("============================\n\n")
         for year in yearly_metrics.index:
             f.write(f"Year: {year}\n")
@@ -773,7 +903,7 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
             f.write("----------------------------\n\n")
     
     # Print summary statistics
-    print("\nSimulation Results for 2030:")
+    print("\nSimulation Results for 2027:")
     print(f"Final Bitcoin Price: ${simulation['btc_price'].iloc[-1]:,.2f}")
     print(f"Final Stock Price: ${simulation['stock_price'].iloc[-1]:,.2f}")
     print(f"Final BTC Holdings: {simulation['btc_holdings'].iloc[-1]:,.2f} BTC")
@@ -782,7 +912,7 @@ def run_complete_simulation(start_date="2025-05-24", end_date="2030-12-31", init
     
     return simulation
 
-def main(start_date="2025-05-24", end_date="2030-12-31", initial_shares=593210000, initial_btc=0):
+def main(start_date="2025-09-04", end_date="2027-12-31", initial_shares=751210000, initial_btc=0):
     """
     Main function to run the complete Metaplanet analysis and simulation
     Args:
@@ -794,7 +924,7 @@ def main(start_date="2025-05-24", end_date="2030-12-31", initial_shares=59321000
     print("Starting Metaplanet analysis...")
     
     # Run simulation
-    print("Running simulation through 2030...")
+    print("Running simulation through 2027...")
     simulation = run_complete_simulation(
         start_date=start_date, end_date=end_date, 
         initial_shares=initial_shares, initial_btc=initial_btc
@@ -804,5 +934,7 @@ def main(start_date="2025-05-24", end_date="2030-12-31", initial_shares=59321000
 
 if __name__ == "__main__":
     # Example usage: provide your own start_date, initial_shares, and initial_btc
+    simulation_results = run_complete_simulation("2025-09-04", "2027-12-31", 751210000, 20000, enable_preferred_shares=True)
+
     # simulation_results = run_complete_simulation("2024-04-01", "2030-12-31", 1234567, 100)
-    simulation_results = run_complete_simulation()
+    # simulation_results = run_complete_simulation()
