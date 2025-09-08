@@ -57,38 +57,38 @@ def calculate_mnav(market_cap, btc_holdings, btc_price):
     btc_value = btc_holdings * btc_price
     return market_cap / btc_value
 
-def calculate_mnav_correlated_volume(current_mnav, base_volume_pct=0.06, min_volume_pct=0.02, max_volume_pct=0.10):
+def calculate_mnav_correlated_volume(current_mnav, base_volume_pct=0.03, min_volume_pct=0.01, max_volume_pct=0.05):
     """
     Calculates volume percentage correlated to mNAV cyclical model
     Higher mNAV = Higher volume (more interest/activity)
-    Range: 2% to 10% of shares outstanding
+    Range: 1% to 5% of shares outstanding
     Args:
         current_mnav: Current mNAV value
-        base_volume_pct: Base volume percentage at mNAV = 1.5 (6%)
-        min_volume_pct: Minimum volume percentage (2%)
-        max_volume_pct: Maximum volume percentage (10%)
+        base_volume_pct: Base volume percentage at mNAV = 1.5 (3%)
+        min_volume_pct: Minimum volume percentage (1%)
+        max_volume_pct: Maximum volume percentage (5%)
     Returns: Volume percentage correlated to mNAV
     """
     # Normalize mNAV to a correlation factor
-    # mNAV 0.8-1.3: Low volume (discount/fair value)
-    # mNAV 1.3-2.5: Moderate volume (moderate premium)  
-    # mNAV 2.5+: High volume (high premium/speculation)
+    # mNAV ≤1.0: Low volume (discount/fair value)
+    # mNAV 1.0-2.0: Moderate volume (moderate premium)  
+    # mNAV >2.0: High volume (high premium/speculation)
     
     if current_mnav <= 1.0:
-        # Below fair value: low volume (2.0% to 3.0%)
-        volume_factor = 0.33 + 0.17 * current_mnav  # 0.33 to 0.50 multiplier
+        # Below fair value: low volume (1.0% to 2.0%)
+        volume_factor = 0.33 + 0.34 * current_mnav  # 0.33 to 0.67 multiplier
     elif current_mnav <= 2.0:
-        # Fair to moderate premium: normal volume (3.0% to 5.0%)
-        volume_factor = 0.50 + 0.33 * (current_mnav - 1.0)  # 0.50 to 0.83 multiplier
+        # Fair to moderate premium: normal volume (2.0% to 3.5%)
+        volume_factor = 0.67 + 0.50 * (current_mnav - 1.0)  # 0.67 to 1.17 multiplier
     else:
-        # High premium: high volume with diminishing returns (5.0% to 10.0%)
+        # High premium: high volume with diminishing returns (3.5% to 5.0%)
         excess_mnav = current_mnav - 2.0
-        volume_factor = 0.83 + 0.84 * np.log(1 + excess_mnav) / np.log(4)  # Scaled log growth
+        volume_factor = 1.17 + 0.50 * np.log(1 + excess_mnav) / np.log(4)  # Scaled log growth
     
     # Apply volume factor to base percentage
     correlated_volume_pct = base_volume_pct * volume_factor
     
-    # Ensure bounds (2% to 10%)
+    # Ensure bounds (1% to 5%)
     return max(min_volume_pct, min(max_volume_pct, correlated_volume_pct))
 
 def calculate_volume_dampening_factor(days_from_start, initial_shares, current_shares):
@@ -286,7 +286,7 @@ def get_preferred_shares_count(current_date):
     """
     start_date = pd.Timestamp('2026-01-01')
     end_date = pd.Timestamp('2030-12-31')
-    max_shares = 10_000_000  # Maximum 10M shares
+    max_shares = 100_000_000  # Maximum 100M shares
 
     if current_date < start_date:
         return 0
@@ -472,6 +472,9 @@ def simulate_through_2040(btc_data, meta_3350_data, initial_shares, btc_holdings
         final_volume_pct = mnav_correlated_volume_pct * max(0.9, min(1.1, vol_noise))
         
         daily_volume = current_shares * final_volume_pct
+        
+        # Cap daily volume at 160M shares to match historical patterns
+        daily_volume = min(daily_volume, 160_000_000)
 
         # Only update stock price and apply dilution on trading days
         if simulation.loc[date, 'is_trading_day']:
@@ -734,7 +737,7 @@ def plot_simulation_results(simulation, enable_preferred_shares=True):
     ax9.yaxis.set_major_formatter(millions_formatter)
 
     # Daily BTC Purchased plot
-    ax10 = fig.add_subplot(gs[4, 1])
+    ax10 = fig.add_subplot(gs[5, 1])  # Swapped position with Volume % plot
     ax10.plot(simulation.index, simulation['btc_purchased'], 'r-', 
             label='Daily BTC Purchased', linewidth=2)
     ax10.set_ylabel('BTC Amount')
@@ -752,14 +755,14 @@ def plot_simulation_results(simulation, enable_preferred_shares=True):
     
     # Shift remaining plots down one position
     if enable_preferred_shares:
-        ax11 = fig.add_subplot(gs[5, 1])  # Preferred Shares (shifted)
+        ax11 = fig.add_subplot(gs[6, 0])  # Preferred Shares (swapped position)
         ax11.plot(simulation.index, simulation['preferred_shares'], 'purple', 
                 label='Preferred Shares', linewidth=2)
         ax11.set_ylabel('Number of Shares')
         ax11.set_title('Preferred Shares Outstanding')
         ax11.yaxis.set_major_formatter(millions_formatter)
         
-        ax12 = fig.add_subplot(gs[6, 0])  # Cumulative Dividends (shifted)
+        ax12 = fig.add_subplot(gs[7, 0])  # Cumulative Dividends (swapped position)
         cumulative_dividends = simulation['quarterly_dividend'].cumsum()
         ax12.plot(simulation.index, cumulative_dividends, 'purple', 
                 label='Cumulative Dividends', linewidth=2)
@@ -788,7 +791,7 @@ def plot_simulation_results(simulation, enable_preferred_shares=True):
         ax13.set_ylim(0, max_ratio * 1.05)
 
     # Add new Volume Percentage plot
-    ax14 = fig.add_subplot(gs[7, 0])  # Place in left column below dilution plot
+    ax14 = fig.add_subplot(gs[4, 1])  # Swapped position with Daily BTC plot
     volume_pct = (simulation['volume'] / simulation['shares_outstanding']) * 100
     ax14.plot(simulation.index, volume_pct, 'r-', 
             label='Volume % of Shares', linewidth=2)

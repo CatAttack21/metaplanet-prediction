@@ -53,6 +53,7 @@ Mataplanet Bitcoin strategy simulation
 - Moderate mNAV (1.0-2.0): 3.0%-5.0% volume  
 - High mNAV (>2.0): 5.0%-10.0% volume
 - Small daily random noise (±5%)
+- Hard cap at 160M shares per day to match historical patterns
 
 ## Daily Share Dilution
 

@@ -13,9 +13,18 @@ def btc_power_law_formula(index):
     genesis = pd.Timestamp('2009-01-03')
     days_since_genesis = (index - genesis).days.values.astype(float)
     days_since_genesis[days_since_genesis < 1] = 1
-    price = 10**-15 * (days_since_genesis ** 6.5)
-    support = 0.63 * price
-    resistance = 4.0 * price
+    
+    # Calculate raw power law with stronger growth
+    base = 10**-16  # Increased base coefficient
+    exponent = 6.5  # Increased exponent
+    price = base * (days_since_genesis ** exponent)
+    
+    # Apply exponential growth factor for far future dates
+    future_boost = np.exp(days_since_genesis / 1500)  # Gradual exponential boost
+    price = price * future_boost
+    
+    support = 0.63 * price  # Tighter support
+    resistance = 4.0 * price  # Tighter resistance
     return support, price, resistance
 
 def predict_bitcoin_prices(start_date, end_date, last_price, historical_data=None):
