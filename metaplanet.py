@@ -676,11 +676,39 @@ def plot_simulation_results(simulation, enable_preferred_shares=True):
         all_prices = simulation['btc_price']
     rolling_cagr = calculate_rolling_cagr(all_prices)
     ax2.plot(rolling_cagr.index, rolling_cagr, 'orange', label='1-Year CAGR', linewidth=2)
-    ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+    ax2.axhline(y=0, color='red', linestyle='--', alpha=0.7, linewidth=1.5)
     ax2.set_ylabel('CAGR (%)')
     ax2.set_title('Bitcoin 1-Year Rolling CAGR')
-    ax2.set_ylim(-20, 150)
-    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    
+    # Dynamic y-axis limits to better show negative values
+    # Remove NaN values and get scalar min/max
+    valid_cagr = rolling_cagr.dropna()
+    if not valid_cagr.empty:
+        cagr_min = float(valid_cagr.min())
+        cagr_max = float(valid_cagr.max())
+        
+        # Add padding and ensure we show negative values clearly
+        y_min = min(-80, cagr_min * 1.1)  # At least -80% or 10% below minimum
+        y_max = max(200, cagr_max * 1.1)   # At least 200% or 10% above maximum
+    else:
+        # Fallback if no valid CAGR data
+        y_min, y_max = -80, 200
+    
+    ax2.set_ylim(y_min, y_max)
+    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.0f}%'))
+    
+    # Add grid for better readability, especially for negative values
+    ax2.grid(True, alpha=0.3)
+    
+    # Color negative and positive areas differently
+    if not valid_cagr.empty:
+        ax2.fill_between(rolling_cagr.index, 0, rolling_cagr, 
+                        where=(rolling_cagr >= 0), alpha=0.3, color='green', 
+                        interpolate=True, label='Positive CAGR')
+        ax2.fill_between(rolling_cagr.index, 0, rolling_cagr, 
+                        where=(rolling_cagr < 0), alpha=0.3, color='red', 
+                        interpolate=True, label='Negative CAGR')
+        ax2.legend(loc='upper right', fontsize='small')
 
     ax3 = fig.add_subplot(gs[2, 0])  # Bitcoin Holdings
     ax3.plot(complete_holdings.index, complete_holdings.values, 'b-', label='BTC Holdings', linewidth=2)
@@ -708,13 +736,18 @@ def plot_simulation_results(simulation, enable_preferred_shares=True):
     ax6.plot(simulation.index, simulation['stock_price'], 'g-', label='Stock Price', linewidth=2)
     ax6.set_ylabel('Stock Price (USD)')
     ax6.set_title('MP Stock Price')
-    ax6.set_ylim(simulation['stock_price'].min() * 0.95, simulation['stock_price'].max() * 1.05)
+    # Set y-axis to include 0 and extend beyond the data range
+    y_min = min(0, simulation['stock_price'].min() * 0.95)
+    y_max = simulation['stock_price'].max() * 1.05
+    ax6.set_ylim(y_min, y_max)
     
     ax7 = fig.add_subplot(gs[1, 1])  # mNAV
     ax7.plot(simulation.index, simulation['mnav'], 'g-', label='mNAV', linewidth=2)
     ax7.set_ylabel('mNAV')
     ax7.set_title('mNAV')
-    ax7.set_ylim(simulation['mnav'].min() * 0.95, simulation['mnav'].max() * 1.05)
+    # Ensure y-axis always includes 0 and shows full range
+    y_max = simulation['mnav'].max() * 1.05
+    ax7.set_ylim(0, y_max)
     
     ax8 = fig.add_subplot(gs[2, 1])  # Implied Volatility
     implied_vol = calculate_implied_volatility(simulation['stock_price'])
@@ -722,7 +755,7 @@ def plot_simulation_results(simulation, enable_preferred_shares=True):
     ax8.set_ylabel('Volatility (%)')
     ax8.set_title('Stock Implied Volatility')
     ax8.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
-    ax8.set_ylim(75, 300)
+    ax8.set_ylim(0, 200)
 
     ax9 = fig.add_subplot(gs[3, 1])  # Shares Outstanding
     ax9.plot(simulation.index, simulation['shares_outstanding'], 'r-', 
